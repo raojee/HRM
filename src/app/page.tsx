@@ -683,9 +683,77 @@ export default function DigiSailHRMDashboard() {
     fetchCompanySubscription();
   }, [selectedCompanyId]);
 
-  // Enforce Role-to-Tab access: Non-Super-Admins can NEVER access the "companies" tab
+  // Enforce Role-to-Tab access & RBAC security bounds
   useEffect(() => {
-    if (currentRole !== "SUPER_ADMIN" && activeTab === "companies") {
+    const roleAllowedTabs: Record<Role, string[]> = {
+      SUPER_ADMIN: [
+        "companies",
+        "dashboard",
+        "approvals",
+        "hierarchy",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+        "billing",
+        "ai-insights",
+      ],
+      COMPANY_ADMIN: [
+        "dashboard",
+        "approvals",
+        "hierarchy",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+        "billing",
+        "ai-insights",
+      ],
+      BRANCH_ADMIN: [
+        "dashboard",
+        "approvals",
+        "hierarchy",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+        "ai-insights",
+      ],
+      DEPARTMENT_ADMIN: [
+        "dashboard",
+        "approvals",
+        "hierarchy",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+        "ai-insights",
+      ],
+      TEAM_LEAD: [
+        "dashboard",
+        "approvals",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+      ],
+      EMPLOYEE: [
+        "dashboard",
+        "employees",
+        "attendance",
+        "leaves",
+        "projects",
+        "payroll",
+      ],
+    };
+
+    const allowed = roleAllowedTabs[currentRole] || ["dashboard"];
+    if (!allowed.includes(activeTab)) {
       setActiveTab("dashboard");
     }
   }, [currentRole, activeTab]);
@@ -1531,26 +1599,64 @@ export default function DigiSailHRMDashboard() {
             )}
 
             {[
-              { id: "dashboard", label: "Dashboard", icon: TrendingUp },
+              {
+                id: "dashboard",
+                label: "Dashboard",
+                icon: TrendingUp,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
               {
                 id: "approvals",
                 label: "Approval Center",
                 icon: FileCheck,
                 badge: totalPendingApprovals > 0 ? totalPendingApprovals : undefined,
                 badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD"],
               },
-              { id: "hierarchy", label: "Org Hierarchy", icon: GitBranch },
-              { id: "employees", label: "Employees", icon: Users, badge: employees.length },
-              { id: "attendance", label: "Attendance", icon: Clock },
-              { id: "leaves", label: "Leave Requests", icon: Calendar },
-              { id: "projects", label: "Projects & Tasks", icon: Briefcase },
-              { id: "payroll", label: "Payroll", icon: DollarSign },
+              {
+                id: "hierarchy",
+                label: "Org Hierarchy",
+                icon: GitBranch,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"],
+              },
+              {
+                id: "employees",
+                label: "Employees",
+                icon: Users,
+                badge: employees.length,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
+              {
+                id: "attendance",
+                label: "Attendance",
+                icon: Clock,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
+              {
+                id: "leaves",
+                label: "Leave Requests",
+                icon: Calendar,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
+              {
+                id: "projects",
+                label: "Projects & Tasks",
+                icon: Briefcase,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
+              {
+                id: "payroll",
+                label: currentRole === "EMPLOYEE" ? "My Payslips" : "Payroll",
+                icon: currentRole === "EMPLOYEE" ? Receipt : DollarSign,
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN", "TEAM_LEAD", "EMPLOYEE"],
+              },
               {
                 id: "billing",
                 label: "Billing & Plans",
                 icon: CreditCard,
                 badge: subscriptionDetails?.subscription?.tier || (activeCompany.plan as string) || "GROWTH",
                 badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN"],
               },
               {
                 id: "ai-insights",
@@ -1558,8 +1664,11 @@ export default function DigiSailHRMDashboard() {
                 icon: Brain,
                 badge: "AI 2.4",
                 badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+                roles: ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"],
               },
-            ].map((item) => {
+            ]
+              .filter((item) => item.roles.includes(currentRole))
+              .map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -2145,213 +2254,382 @@ export default function DigiSailHRMDashboard() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setActiveTab("approvals")}
-                      className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-xl border border-amber-500/30 transition flex items-center gap-1.5"
-                    >
-                      <FileCheck className="w-4 h-4" />
-                      Approval Queue ({totalPendingApprovals})
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("hierarchy")}
-                      className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition"
-                    >
-                      View Org Structure
-                    </button>
+                    {currentRole === "EMPLOYEE" ? (
+                      <>
+                        <button
+                          onClick={() => setShowApplyLeaveModal(true)}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Request Time Off
+                        </button>
+                        <button
+                          onClick={() => setActiveTab("payroll")}
+                          className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Receipt className="w-4 h-4 text-emerald-400" />
+                          My Payslips
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setActiveTab("approvals")}
+                          className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-xl border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <FileCheck className="w-4 h-4" />
+                          Approval Queue ({totalPendingApprovals})
+                        </button>
+                        {["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"].includes(currentRole) && (
+                          <button
+                            onClick={() => setActiveTab("hierarchy")}
+                            className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
+                          >
+                            View Org Structure
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Active Workforce
-                    </p>
-                    <p className="text-2xl font-bold text-white mt-1">
-                      {employees.filter((e) => e.onboardingStatus === "ACTIVE").length}
-                    </p>
-                    <p className="text-[11px] text-emerald-400 flex items-center gap-1 mt-1">
-                      +100% verified staff
-                    </p>
+              {currentRole === "EMPLOYEE" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Card 1: Today's Shift & Attendance */}
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        My Attendance
+                      </p>
+                      <p className="text-2xl font-bold text-white mt-1">
+                        {attendances.find((a) => a.employeeName.toLowerCase().includes("priya"))?.workHours || 7.5} hrs
+                      </p>
+                      <p className="text-[11px] text-emerald-400 flex items-center gap-1 mt-1">
+                        ● Shift active & recorded
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                      <Clock className="w-6 h-6 text-emerald-400" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                    <Users className="w-6 h-6 text-blue-400" />
+
+                  {/* Card 2: Annual Leave Balance */}
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        Available Leave
+                      </p>
+                      <p className="text-2xl font-bold text-amber-400 mt-1">
+                        {leaveBalances.reduce((acc, b) => acc + b.availableDays, 0)} Days
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Paid annual & casual entitlement
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                      <Calendar className="w-6 h-6 text-amber-400" />
+                    </div>
+                  </div>
+
+                  {/* Card 3: Active Assigned Projects */}
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        Assigned Projects
+                      </p>
+                      <p className="text-2xl font-bold text-white mt-1">
+                        {projectsList.filter((p) => p.status === "ACTIVE").length} Active
+                      </p>
+                      <p className="text-[11px] text-indigo-400 mt-1">
+                        Core engineering sprint
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                      <Briefcase className="w-6 h-6 text-indigo-400" />
+                    </div>
+                  </div>
+
+                  {/* Card 4: Estimated Net Monthly Compensation */}
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        My Net Take-Home
+                      </p>
+                      <p className="text-2xl font-bold text-emerald-400 mt-1">
+                        $5,608.00
+                      </p>
+                      <p className="text-[11px] text-emerald-300 mt-1">
+                        Direct deposit settled
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                      <DollarSign className="w-6 h-6 text-emerald-400" />
+                    </div>
                   </div>
                 </div>
-
-                <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Approval Pipeline
-                    </p>
-                    <p className="text-2xl font-bold text-amber-400 mt-1">{totalPendingApprovals}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {pendingDeptCandidates.length} Dept • {pendingBranchCandidates.length} Branch
-                    </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        Active Workforce
+                      </p>
+                      <p className="text-2xl font-bold text-white mt-1">
+                        {employees.filter((e) => e.onboardingStatus === "ACTIVE").length}
+                      </p>
+                      <p className="text-[11px] text-emerald-400 flex items-center gap-1 mt-1">
+                        +100% verified staff
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                      <Users className="w-6 h-6 text-blue-400" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                    <FileCheck className="w-6 h-6 text-amber-400" />
+
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        Approval Pipeline
+                      </p>
+                      <p className="text-2xl font-bold text-amber-400 mt-1">{totalPendingApprovals}</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {pendingDeptCandidates.length} Dept • {pendingBranchCandidates.length} Branch
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                      <FileCheck className="w-6 h-6 text-amber-400" />
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        Branches & Offices
+                      </p>
+                      <p className="text-2xl font-bold text-white mt-1">{branches.length}</p>
+                      <p className="text-[11px] text-indigo-400 mt-1">
+                        {departments.length} Active Departments
+                      </p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                      <GitBranch className="w-6 h-6 text-indigo-400" />
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                        September Payroll
+                      </p>
+                      <p className="text-2xl font-bold text-white mt-1">$55,833</p>
+                      <p className="text-[11px] text-emerald-400 mt-1">Settled on Neon Cloud</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                      <DollarSign className="w-6 h-6 text-emerald-400" />
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      Branches & Offices
-                    </p>
-                    <p className="text-2xl font-bold text-white mt-1">{branches.length}</p>
-                    <p className="text-[11px] text-indigo-400 mt-1">
-                      {departments.length} Active Departments
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                    <GitBranch className="w-6 h-6 text-indigo-400" />
-                  </div>
-                </div>
-
-                <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                      September Payroll
-                    </p>
-                    <p className="text-2xl font-bold text-white mt-1">$55,833</p>
-                    <p className="text-[11px] text-emerald-400 mt-1">Settled on Neon Cloud</p>
-                  </div>
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                    <DollarSign className="w-6 h-6 text-emerald-400" />
-                  </div>
-                </div>
-              </div>
-
-              {/* 2-Stage Approval Pipeline Summary */}
-              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <FileCheck className="w-5 h-5 text-amber-400" />
-                    <h2 className="text-base font-semibold text-white">
-                      Live Employee Onboarding & Approval Queue
-                    </h2>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab("approvals")}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
-                  >
-                    Manage All in Approval Center →
-                  </button>
-                </div>
-
+              {/* If Employee: Self-Service Quick Hub. If Manager/Admin: 2-Stage Approval Pipeline Summary */}
+              {currentRole === "EMPLOYEE" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Stage 1: Department Review */}
-                  <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800">
+                  {/* Panel 1: Time Off Balances & Request */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
-                        Stage 1: Dept Head Review ({pendingDeptCandidates.length})
-                      </span>
-                      <span className="text-[10px] text-slate-400">Reviewer: Alex Chen</span>
-                    </div>
-
-                    {pendingDeptCandidates.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-3 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-3 mt-2"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={c.avatarUrl}
-                            alt={c.firstName}
-                            className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
-                          />
-                          <div>
-                            <p className="text-xs font-bold text-white">
-                              {c.firstName} {c.lastName}
-                            </p>
-                            <p className="text-[10px] text-slate-400">
-                              Proposed by: <span className="text-slate-300">{c.createdByName}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        {(currentRole === "DEPARTMENT_ADMIN" ||
-                          currentRole === "BRANCH_ADMIN" ||
-                          currentRole === "COMPANY_ADMIN" ||
-                          currentRole === "SUPER_ADMIN") && (
-                          <button
-                            onClick={() => openApprovalModal(c, "APPROVE")}
-                            className="px-2.5 py-1 text-xs font-semibold rounded bg-indigo-600 hover:bg-indigo-500 text-white transition"
-                          >
-                            Review →
-                          </button>
-                        )}
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-blue-400" />
+                        <h2 className="text-base font-semibold text-white">
+                          My Leave Entitlements
+                        </h2>
                       </div>
-                    ))}
-
-                    {pendingDeptCandidates.length === 0 && (
-                      <p className="text-xs text-slate-500 py-3 text-center">
-                        No candidates awaiting department review.
-                      </p>
-                    )}
+                      <button
+                        onClick={() => setShowApplyLeaveModal(true)}
+                        className="text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                      >
+                        + Request Leave
+                      </button>
+                    </div>
+                    <div className="space-y-2.5">
+                      {leaveBalances.map((bal) => (
+                        <div
+                          key={bal.id}
+                          className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs"
+                        >
+                          <span className="font-semibold text-white">{bal.leaveType}</span>
+                          <span className="text-slate-400">
+                            <span className="font-bold text-amber-300 font-mono">{bal.availableDays}</span> of {bal.allocatedDays} days left
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Stage 2: Branch HR Sign-Off */}
-                  <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800">
+                  {/* Panel 2: Projects & Quick Timesheet Logging */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                        Stage 2: Branch HR Final Sign-Off ({pendingBranchCandidates.length})
-                      </span>
-                      <span className="text-[10px] text-slate-400">Reviewer: Michael Scott</span>
-                    </div>
-
-                    {pendingBranchCandidates.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-3 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-3 mt-2"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={c.avatarUrl}
-                            alt={c.firstName}
-                            className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
-                          />
-                          <div>
-                            <p className="text-xs font-bold text-white">
-                              {c.firstName} {c.lastName}
-                            </p>
-                            <p className="text-[10px] text-emerald-400">
-                              ✓ Dept Approved • Awaiting Activation
-                            </p>
-                          </div>
-                        </div>
-
-                        {(currentRole === "BRANCH_ADMIN" ||
-                          currentRole === "COMPANY_ADMIN" ||
-                          currentRole === "SUPER_ADMIN") && (
-                          <button
-                            onClick={() => openApprovalModal(c, "APPROVE")}
-                            className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition"
-                          >
-                            Final Sign-Off →
-                          </button>
-                        )}
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="w-5 h-5 text-indigo-400" />
+                        <h2 className="text-base font-semibold text-white">
+                          Active Projects & Timesheets
+                        </h2>
                       </div>
-                    ))}
-
-                    {pendingBranchCandidates.length === 0 && (
-                      <p className="text-xs text-slate-500 py-3 text-center">
-                        No candidates awaiting branch HR sign-off.
-                      </p>
-                    )}
+                      <button
+                        onClick={() => setShowLogTimesheetModal(true)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                      >
+                        + Log Timesheet
+                      </button>
+                    </div>
+                    <div className="space-y-2.5">
+                      {projectsList.slice(0, 3).map((proj) => (
+                        <div
+                          key={proj.id}
+                          className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs"
+                        >
+                          <div>
+                            <p className="font-semibold text-white">{proj.name}</p>
+                            <p className="text-[10px] text-slate-400">{proj.clientName}</p>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                            {proj.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* 2-Stage Approval Pipeline Summary for Managers & Admins */
+                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-5 h-5 text-amber-400" />
+                      <h2 className="text-base font-semibold text-white">
+                        Live Employee Onboarding & Approval Queue
+                      </h2>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("approvals")}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                    >
+                      Manage All in Approval Center →
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Stage 1: Department Review */}
+                    <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                          Stage 1: Dept Head Review ({pendingDeptCandidates.length})
+                        </span>
+                        <span className="text-[10px] text-slate-400">Reviewer: Alex Chen</span>
+                      </div>
+
+                      {pendingDeptCandidates.map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-3 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-3 mt-2"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src={c.avatarUrl}
+                              alt={c.firstName}
+                              className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
+                            />
+                            <div>
+                              <p className="text-xs font-bold text-white">
+                                {c.firstName} {c.lastName}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                Proposed by: <span className="text-slate-300">{c.createdByName}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {(currentRole === "DEPARTMENT_ADMIN" ||
+                            currentRole === "BRANCH_ADMIN" ||
+                            currentRole === "COMPANY_ADMIN" ||
+                            currentRole === "SUPER_ADMIN") && (
+                            <button
+                              onClick={() => openApprovalModal(c, "APPROVE")}
+                              className="px-2.5 py-1 text-xs font-semibold rounded bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer"
+                            >
+                              Review →
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      {pendingDeptCandidates.length === 0 && (
+                        <p className="text-xs text-slate-500 py-3 text-center">
+                          No candidates awaiting department review.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Stage 2: Branch HR Sign-Off */}
+                    <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                          Stage 2: Branch HR Final Sign-Off ({pendingBranchCandidates.length})
+                        </span>
+                        <span className="text-[10px] text-slate-400">Reviewer: Michael Scott</span>
+                      </div>
+
+                      {pendingBranchCandidates.map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-3 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-3 mt-2"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src={c.avatarUrl}
+                              alt={c.firstName}
+                              className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
+                            />
+                            <div>
+                              <p className="text-xs font-bold text-white">
+                                {c.firstName} {c.lastName}
+                              </p>
+                              <p className="text-[10px] text-emerald-400">
+                                ✓ Dept Approved • Awaiting Activation
+                              </p>
+                            </div>
+                          </div>
+
+                          {(currentRole === "BRANCH_ADMIN" ||
+                            currentRole === "COMPANY_ADMIN" ||
+                            currentRole === "SUPER_ADMIN") && (
+                            <button
+                              onClick={() => openApprovalModal(c, "APPROVE")}
+                              className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition cursor-pointer"
+                            >
+                              Final Sign-Off →
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      {pendingBranchCandidates.length === 0 && (
+                        <p className="text-xs text-slate-500 py-3 text-center">
+                          No candidates awaiting branch HR sign-off.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* TAB 2: APPROVAL CENTER (THE 2-STAGE APPROVAL WORKFLOW) */}
-          {activeTab === "approvals" && (
+          {activeTab === "approvals" && currentRole !== "EMPLOYEE" && (
             <div className="space-y-6 max-w-7xl mx-auto">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -2491,32 +2769,60 @@ export default function DigiSailHRMDashboard() {
                           {/* Action Buttons */}
                           {!isRejected && (
                             <div className="flex items-center gap-2 self-end lg:self-center">
-                              <button
-                                onClick={() => openApprovalModal(candidate, "REJECT")}
-                                className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5"
-                              >
-                                <XCircle className="w-4 h-4" />
-                                Reject
-                              </button>
-
                               {isDeptStage && (
-                                <button
-                                  onClick={() => openApprovalModal(candidate, "APPROVE")}
-                                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5"
-                                >
-                                  <Check className="w-4 h-4" />
-                                  Approve to Branch HR
-                                </button>
+                                <>
+                                  {["DEPARTMENT_ADMIN", "COMPANY_ADMIN", "SUPER_ADMIN"].includes(currentRole) ? (
+                                    <>
+                                      <button
+                                        onClick={() => openApprovalModal(candidate, "REJECT")}
+                                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <XCircle className="w-4 h-4" />
+                                        Reject
+                                      </button>
+                                      <button
+                                        onClick={() => openApprovalModal(candidate, "APPROVE")}
+                                        className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                        Approve to Branch HR
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs px-3 py-1.5 rounded-xl bg-slate-800/80 text-slate-400 border border-slate-700/60 font-medium italic flex items-center gap-1.5">
+                                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                                      Awaiting Dept Admin Review
+                                    </span>
+                                  )}
+                                </>
                               )}
 
                               {isBranchStage && (
-                                <button
-                                  onClick={() => openApprovalModal(candidate, "APPROVE")}
-                                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  Final Approve & Activate
-                                </button>
+                                <>
+                                  {["BRANCH_ADMIN", "COMPANY_ADMIN", "SUPER_ADMIN"].includes(currentRole) ? (
+                                    <>
+                                      <button
+                                        onClick={() => openApprovalModal(candidate, "REJECT")}
+                                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <XCircle className="w-4 h-4" />
+                                        Reject
+                                      </button>
+                                      <button
+                                        onClick={() => openApprovalModal(candidate, "APPROVE")}
+                                        className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        Final Approve & Activate
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs px-3 py-1.5 rounded-xl bg-slate-800/80 text-slate-400 border border-slate-700/60 font-medium italic flex items-center gap-1.5">
+                                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                      Awaiting Branch HR Review
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                           )}
@@ -2627,22 +2933,26 @@ export default function DigiSailHRMDashboard() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                        <button
-                          onClick={() => handleActionLeaveRequest(l.id, "REJECT")}
-                          className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Reject
-                        </button>
-                        <button
-                          onClick={() => handleActionLeaveRequest(l.id, "APPROVE")}
-                          className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Check className="w-4 h-4" />
-                          Approve Leave
-                        </button>
-                      </div>
+                      {["TEAM_LEAD", "DEPARTMENT_ADMIN", "BRANCH_ADMIN", "COMPANY_ADMIN", "SUPER_ADMIN"].includes(currentRole) ? (
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                          <button
+                            onClick={() => handleActionLeaveRequest(l.id, "REJECT")}
+                            className="px-4 py-2 text-xs font-semibold rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Reject
+                          </button>
+                          <button
+                            onClick={() => handleActionLeaveRequest(l.id, "APPROVE")}
+                            className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Check className="w-4 h-4" />
+                            Approve Leave
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500 italic">Reviewer authorization required</span>
+                      )}
                     </div>
                   ))}
 
@@ -2658,7 +2968,8 @@ export default function DigiSailHRMDashboard() {
       )}
 
           {/* TAB 3: MULTI-TIER ORG HIERARCHY STUDIO */}
-          {activeTab === "hierarchy" && (
+          {activeTab === "hierarchy" &&
+            ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"].includes(currentRole) && (
             <div className="space-y-6 max-w-7xl mx-auto">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -3048,9 +3359,18 @@ export default function DigiSailHRMDashboard() {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-200">
-                        ${emp.baseSalary.toLocaleString()} / yr
-                      </span>
+                      {["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"].includes(currentRole) ? (
+                        <span className="font-bold text-slate-200 font-mono">
+                          ${emp.baseSalary.toLocaleString()} / yr
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] font-medium">
+                          {emp.email.toLowerCase() === currentUser.email.toLowerCase() ||
+                          `${emp.firstName} ${emp.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+                            ? `$${emp.baseSalary.toLocaleString()} / yr`
+                            : "Compensation Confidential"}
+                        </span>
+                      )}
                       <span className="text-indigo-400 text-[11px] font-semibold">Active Staff</span>
                     </div>
                   </div>
@@ -3890,13 +4210,15 @@ export default function DigiSailHRMDashboard() {
                     </div>
                     <div>
                       <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                        Payroll & Compensation Ledger
+                        {currentRole === "EMPLOYEE" ? "My Personal Payslips & Earnings" : "Payroll & Compensation Ledger"}
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                          Phase 7 Live
+                          {currentRole === "EMPLOYEE" ? "Self-Service" : "Phase 7 Live"}
                         </span>
                       </h1>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Automated batch calculations, statutory tax compliance, and verifiable digital employee payslips.
+                        {currentRole === "EMPLOYEE"
+                          ? "Review and download your official digital payslips, monthly tax withholdings, and take-home earnings."
+                          : "Automated batch calculations, statutory tax compliance, and verifiable digital employee payslips."}
                       </p>
                     </div>
                   </div>
@@ -3960,84 +4282,165 @@ export default function DigiSailHRMDashboard() {
               </div>
 
               {/* 4 Dynamic KPI Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* KPI 1: Net Disbursed */}
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Total Net Disbursed</span>
-                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      <Wallet className="w-4 h-4" />
+              {currentRole === "EMPLOYEE" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* KPI 1: Monthly Base */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Monthly Gross Base</span>
+                      <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                        <DollarSign className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        $7,083.33
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-indigo-300">
+                        <span>$85,000 / yr contracted base</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-2.5">
-                    <div className="text-xl font-bold font-mono text-white">
-                      ${payrollOverview.kpis.totalDisbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
-                      <TrendingUp className="w-3 h-3" />
-                      <span>Verified ACH direct deposit settlements</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* KPI 2: Tax Withheld */}
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Tax & Compliance Remitted</span>
-                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                      <Shield className="w-4 h-4" />
+                  {/* KPI 2: Net Payout */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Estimated Net Payout</span>
+                      <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        <Wallet className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        $5,608.00
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
+                        <TrendingUp className="w-3 h-3" />
+                        <span>Direct Deposit to Checking</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-2.5">
-                    <div className="text-xl font-bold font-mono text-white">
-                      ${payrollOverview.kpis.totalTaxCollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
-                      <span>Federal & State statutory withholding</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* KPI 3: Active Staff Coverage */}
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Active Staff On Payroll</span>
-                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                      <Users className="w-4 h-4" />
+                  {/* KPI 3: Tax Withheld */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Tax & FICA Withheld</span>
+                      <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        <Shield className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        $1,125.00
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                        <span>Statutory deductions applied</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-2.5">
-                    <div className="text-xl font-bold font-mono text-white">
-                      {payrollOverview.kpis.activeEmployeeCount} Employees
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-indigo-300">
-                      <span>100% active roster coverage</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* KPI 4: Batch Runs */}
-                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-400">Batch Settlements</span>
-                    <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                      <FileCheck className="w-4 h-4" />
+                  {/* KPI 4: Archived Slips */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Archived Statements</span>
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        <FileCheck className="w-4 h-4" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-2.5">
-                    <div className="text-xl font-bold font-mono text-white">
-                      {payrollOverview.runs.length} Batches
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-purple-300">
-                      <span>Latest: Month {payrollOverview.kpis.latestRun ? `${payrollOverview.kpis.latestRun.month}/${payrollOverview.kpis.latestRun.year}` : "N/A"}</span>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        Available Online
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-purple-300">
+                        <span>Verified digital signatures</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* KPI 1: Net Disbursed */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Total Net Disbursed</span>
+                      <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        <Wallet className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        ${payrollOverview.kpis.totalDisbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
+                        <TrendingUp className="w-3 h-3" />
+                        <span>Verified ACH direct deposit settlements</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* KPI 2: Tax Withheld */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Tax & Compliance Remitted</span>
+                      <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        <Shield className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        ${payrollOverview.kpis.totalTaxCollected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                        <span>Federal & State statutory withholding</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* KPI 3: Active Staff Coverage */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Active Staff On Payroll</span>
+                      <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                        <Users className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        {payrollOverview.kpis.activeEmployeeCount} Employees
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-indigo-300">
+                        <span>100% active roster coverage</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* KPI 4: Batch Runs */}
+                  <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-4 relative overflow-hidden backdrop-blur-sm">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-400">Batch Settlements</span>
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                        <FileCheck className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="text-xl font-bold font-mono text-white">
+                        {payrollOverview.runs.length} Batches
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-purple-300">
+                        <span>Latest: Month {payrollOverview.kpis.latestRun ? `${payrollOverview.kpis.latestRun.month}/${payrollOverview.kpis.latestRun.year}` : "N/A"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Sub-Navigation Switcher */}
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -4051,25 +4454,24 @@ export default function DigiSailHRMDashboard() {
                     }`}
                   >
                     <Receipt className="w-3.5 h-3.5" />
-                    <span>Employee Payslips Directory</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-white/20 text-white">
-                      {payslips.length > 0 ? payslips.length : initialPayroll.length}
-                    </span>
+                    <span>{currentRole === "EMPLOYEE" ? "My Personal Payslips" : "Employee Payslips Directory"}</span>
                   </button>
-                  <button
-                    onClick={() => setPayrollSubTab("batches")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                      payrollSubTab === "batches"
-                        ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
-                        : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>Payroll Batch History</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-white/20 text-white">
-                      {payrollOverview.runs.length}
-                    </span>
-                  </button>
+                  {currentRole !== "EMPLOYEE" && (
+                    <button
+                      onClick={() => setPayrollSubTab("batches")}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                        payrollSubTab === "batches"
+                          ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/30"
+                          : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Payroll Batch History</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-white/20 text-white">
+                        {payrollOverview.runs.length}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="text-xs text-slate-400 hidden sm:block">
@@ -4141,6 +4543,13 @@ export default function DigiSailHRMDashboard() {
                                 }));
 
                           const filtered = activeSlips.filter((p) => {
+                            if (currentRole === "EMPLOYEE") {
+                              const isMySlip =
+                                p.employeeName.toLowerCase().includes("priya") ||
+                                p.employeeName.toLowerCase() === currentUser.name.toLowerCase() ||
+                                p.email.toLowerCase() === currentUser.email.toLowerCase();
+                              if (!isMySlip) return false;
+                            }
                             if (payrollMonthFilter !== "ALL" && p.month !== payrollMonthFilter) return false;
                             if (p.year !== payrollYearFilter) return false;
                             if (payrollSearchQuery.trim()) {
@@ -4341,7 +4750,8 @@ export default function DigiSailHRMDashboard() {
           )}
 
           {/* TAB 8: SAAS BILLING, SUBSCRIPTIONS & LICENSE QUOTAS (PHASE 9) */}
-          {activeTab === "billing" && (
+          {activeTab === "billing" &&
+            ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(currentRole) && (
             <div className="space-y-6 max-w-7xl mx-auto">
               {/* Billing Hero Banner */}
               <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 p-6 border border-emerald-500/30 shadow-2xl">
@@ -4911,7 +5321,8 @@ export default function DigiSailHRMDashboard() {
           )}
 
           {/* TAB: AI WORKFORCE INTELLIGENCE & ANALYTICS (PHASE 10) */}
-          {activeTab === "ai-insights" && (
+          {activeTab === "ai-insights" &&
+            ["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"].includes(currentRole) && (
             <div className="space-y-6 animate-in fade-in duration-300">
               {/* Hero Banner */}
               <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-950/60 via-indigo-950/40 to-slate-900 border border-purple-500/30 p-6 shadow-2xl">
