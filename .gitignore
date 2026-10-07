@@ -49,3 +49,8 @@ next-env.d.ts
 .agents/
 .claude/
 .windsurf/
+
+# build & deployment archives / scratch scripts
+scratch/*.js
+*.zip
+*.tar.gz
