@@ -43,8 +43,11 @@ export interface Employee {
   phone?: string;
   avatarUrl?: string;
   branch: string;
+  branchId?: string | null;
   department: string;
+  departmentId?: string | null;
   team?: string;
+  teamId?: string | null;
   designation: string;
   managerName?: string;
   createdByName?: string;
@@ -197,7 +200,7 @@ export interface AttendanceRecord {
   punchIn?: string;
   punchOut?: string;
   workHours?: number;
-  status: AttendanceStatus;
+  status: AttendanceStatus | string;
   ipAddress?: string;
 }
 

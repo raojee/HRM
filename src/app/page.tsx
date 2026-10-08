@@ -62,6 +62,9 @@ import {
 import {
   CompanyRecord,
   Employee,
+  AttendanceRecord,
+  EmploymentType,
+  EmployeeStatus,
   BranchRecord,
   DepartmentRecord,
   TeamRecord,
@@ -285,7 +288,7 @@ export default function DigiSailHRMDashboard() {
   const [branches, setBranches] = useState<BranchRecord[]>(initialBranches);
   const [departments, setDepartments] = useState<DepartmentRecord[]>(initialDepartmentsList);
   const [teams, setTeams] = useState<TeamRecord[]>(initialTeamsList);
-  const [attendances, setAttendances] = useState(initialAttendances);
+  const [attendances, setAttendances] = useState<AttendanceRecord[]>(initialAttendances);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>(initialLeaveRequests);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRecord[]>([
     {
@@ -447,6 +450,22 @@ export default function DigiSailHRMDashboard() {
     country: string;
     adminName: string;
   } | null>(null);
+  const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<{
+    id: string;
+    employeeNumber: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    designation: string;
+    branchId: string;
+    departmentId: string;
+    teamId: string;
+    employmentType: EmploymentType;
+    status: EmployeeStatus;
+    baseSalary: number;
+  } | null>(null);
   const [approvalModalCandidate, setApprovalModalCandidate] = useState<Employee | null>(null);
   const [approvalModalAction, setApprovalModalAction] = useState<"APPROVE" | "REJECT">("APPROVE");
   const [approvalComments, setApprovalComments] = useState("");
@@ -596,8 +615,11 @@ export default function DigiSailHRMDashboard() {
             phone: item.phone || "+1 (555) 000-0000",
             avatarUrl: item.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.firstName + " " + item.lastName)}&background=6366f1&color=fff&bold=true`,
             branch: item.branch?.name || "Main Branch",
+            branchId: item.branchId,
             department: item.department?.name || "Operations",
+            departmentId: item.departmentId,
             team: item.team?.name || "Core Platform & Cloud Team",
+            teamId: item.teamId,
             designation: item.designation?.title || "Staff Member",
             createdByName: item.createdBy?.email ? `User (${item.createdBy.email})` : "HR System",
             hireDate: item.hireDate ? new Date(item.hireDate).toISOString().split("T")[0] : "2026-01-01",
@@ -697,6 +719,35 @@ export default function DigiSailHRMDashboard() {
         }
       }
 
+      // 2d. Fetch live attendance logs
+      const attRes = await fetch(`/api/attendance${companyQueryParam}`);
+      if (attRes.ok) {
+        const attJson = await attRes.json();
+        if (attJson.success && Array.isArray(attJson.data)) {
+          const liveAttendances: AttendanceRecord[] = attJson.data.map((a: any) => ({
+            id: a.id,
+            employeeId: a.employeeId,
+            employeeName: a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : "Employee",
+            employeeAvatar: a.employee?.avatarUrl,
+            branch: a.employee?.branch?.name || "Main Branch",
+            department: a.employee?.department?.name || "General Operations",
+            date: a.date ? new Date(a.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+            punchIn: a.punchIn ? new Date(a.punchIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "09:00 AM",
+            punchOut: a.punchOut ? new Date(a.punchOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : undefined,
+            workHours: a.workHours ? Number(a.workHours) : 8.0,
+            status: a.status || "PRESENT",
+          }));
+
+          if (isIsolatedTenant) {
+            setAttendances(liveAttendances);
+          } else if (liveAttendances.length > 0) {
+            setAttendances(liveAttendances);
+          }
+        }
+      } else if (isIsolatedTenant) {
+        setAttendances([]);
+      }
+
       // 3. Fetch live leave requests
       const leaveRes = await fetch(`/api/leaves${companyQueryParam}`);
       if (leaveRes.ok) {
@@ -790,7 +841,7 @@ export default function DigiSailHRMDashboard() {
       }
 
       // 8. Fetch live projects (Phase 8)
-      const projRes = await fetch("/api/projects");
+      const projRes = await fetch(`/api/projects${companyQueryParam}`);
       if (projRes.ok) {
         const projJson = await projRes.json();
         if (projJson.success && Array.isArray(projJson.data)) {
@@ -800,10 +851,12 @@ export default function DigiSailHRMDashboard() {
             setProjectsList(projJson.data);
           }
         }
+      } else if (isIsolatedTenant) {
+        setProjectsList([]);
       }
 
       // 9. Fetch live timesheets (Phase 8)
-      const tsRes = await fetch("/api/timesheets");
+      const tsRes = await fetch(`/api/timesheets${companyQueryParam}`);
       if (tsRes.ok) {
         const tsJson = await tsRes.json();
         if (tsJson.success && Array.isArray(tsJson.data)) {
@@ -813,6 +866,8 @@ export default function DigiSailHRMDashboard() {
             setTimesheetsList(tsJson.data);
           }
         }
+      } else if (isIsolatedTenant) {
+        setTimesheetsList([]);
       }
 
       // 10. Fetch live tenants for Super Admin (Phase 9)
@@ -1728,6 +1783,74 @@ export default function DigiSailHRMDashboard() {
       await fetchLiveData(targetCompanyId);
     } catch (err: any) {
       showToast(err.message || "Failed to update branch.");
+    }
+  };
+
+  // Handler: Open Edit Employee Modal
+  const handleOpenEditEmployee = (emp: Employee) => {
+    const matchedBranch = branches.find((b) => b.name === emp.branch || b.id === emp.branchId);
+    const matchedDept = departments.find((d) => d.name === emp.department || d.id === emp.departmentId);
+    const matchedTeam = teams.find((t) => t.name === emp.team || t.id === emp.teamId);
+
+    setEditingEmployee({
+      id: emp.id,
+      employeeNumber: emp.employeeNumber,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      email: emp.email,
+      phone: emp.phone && emp.phone !== "+1 (555) 000-0000" ? emp.phone : "",
+      designation: emp.designation,
+      branchId: emp.branchId || matchedBranch?.id || (branches[0]?.id || ""),
+      departmentId: emp.departmentId || matchedDept?.id || "",
+      teamId: emp.teamId || matchedTeam?.id || "",
+      employmentType: emp.employmentType || "FULL_TIME",
+      status: emp.status || "ACTIVE",
+      baseSalary: emp.baseSalary || 0,
+    });
+    setShowEditEmployeeModal(true);
+  };
+
+  // Handler: Update Employee
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || !editingEmployee.firstName || !editingEmployee.lastName || !editingEmployee.email) return;
+
+    const targetCompanyId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+      ? authenticatedUser.company.id
+      : selectedCompanyId;
+
+    try {
+      const res = await fetch(`/api/employees/${editingEmployee.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editingEmployee.firstName,
+          lastName: editingEmployee.lastName,
+          email: editingEmployee.email,
+          phone: editingEmployee.phone || null,
+          designationTitle: editingEmployee.designation,
+          branchId: editingEmployee.branchId || null,
+          departmentId: editingEmployee.departmentId || null,
+          teamId: editingEmployee.teamId || null,
+          employmentType: editingEmployee.employmentType,
+          status: editingEmployee.status,
+          baseSalary: editingEmployee.baseSalary ? Number(editingEmployee.baseSalary) : null,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || "Failed to update employee");
+        return;
+      }
+
+      setShowEditEmployeeModal(false);
+      const updatedFullName = `${editingEmployee.firstName} ${editingEmployee.lastName}`;
+      setEditingEmployee(null);
+      showToast(`Employee "${updatedFullName}" updated successfully!`);
+      await fetchLiveData(targetCompanyId);
+    } catch (err: any) {
+      showToast(err.message || "Failed to update employee.");
     }
   };
 
@@ -3672,15 +3795,26 @@ export default function DigiSailHRMDashboard() {
                             <span className="text-[10px] text-slate-400">{emp.employeeNumber}</span>
                           </div>
                         </div>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            emp.onboardingStatus === "ACTIVE"
-                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                              : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                          }`}
-                        >
-                          {emp.onboardingStatus}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              emp.onboardingStatus === "ACTIVE"
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            }`}
+                          >
+                            {emp.onboardingStatus}
+                          </span>
+                          {["SUPER_ADMIN", "COMPANY_ADMIN", "BRANCH_ADMIN", "DEPARTMENT_ADMIN"].includes(currentRole) && (
+                            <button
+                              onClick={() => handleOpenEditEmployee(emp)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition border border-slate-700/50 hover:border-indigo-500/50"
+                              title="Edit Employee Profile"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-300">
@@ -3715,37 +3849,55 @@ export default function DigiSailHRMDashboard() {
           {/* TAB 5: ATTENDANCE */}
           {activeTab === "attendance" && (
             <div className="space-y-6 max-w-7xl mx-auto">
-              <h1 className="text-xl font-bold text-white">Attendance Logs</h1>
-              <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-800/50 text-slate-400 uppercase text-[10px]">
-                    <tr>
-                      <th className="py-3.5 px-4">Employee</th>
-                      <th className="py-3.5 px-4">Branch</th>
-                      <th className="py-3.5 px-4">Department</th>
-                      <th className="py-3.5 px-4">Punch In</th>
-                      <th className="py-3.5 px-4">Work Hours</th>
-                      <th className="py-3.5 px-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {attendances.map((a) => (
-                      <tr key={a.id} className="hover:bg-slate-800/30 transition">
-                        <td className="py-3 px-4 font-semibold text-white">{a.employeeName}</td>
-                        <td className="py-3 px-4">{a.branch}</td>
-                        <td className="py-3 px-4">{a.department}</td>
-                        <td className="py-3 px-4 font-mono">{a.punchIn}</td>
-                        <td className="py-3 px-4 font-semibold">{a.workHours} hrs</td>
-                        <td className="py-3 px-4">
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400">
-                            {a.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-xl font-bold text-white">Attendance Logs</h1>
+                  <p className="text-xs text-slate-400">
+                    Real-time check-ins and verified work hours for {activeCompany?.name || "your organization"}.
+                  </p>
+                </div>
               </div>
+
+              {attendances.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 bg-slate-900/60 rounded-2xl border border-dashed border-slate-800">
+                  <Clock className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                  <h3 className="text-sm font-semibold text-white">No Attendance Logs Found</h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    No check-ins have been recorded yet for {activeCompany?.name || "this organization"}. Team members can punch in using the Punch In button to record attendance.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-800/50 text-slate-400 uppercase text-[10px]">
+                      <tr>
+                        <th className="py-3.5 px-4">Employee</th>
+                        <th className="py-3.5 px-4">Branch</th>
+                        <th className="py-3.5 px-4">Department</th>
+                        <th className="py-3.5 px-4">Punch In</th>
+                        <th className="py-3.5 px-4">Work Hours</th>
+                        <th className="py-3.5 px-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      {attendances.map((a) => (
+                        <tr key={a.id} className="hover:bg-slate-800/30 transition">
+                          <td className="py-3 px-4 font-semibold text-white">{a.employeeName}</td>
+                          <td className="py-3 px-4">{a.branch}</td>
+                          <td className="py-3 px-4">{a.department}</td>
+                          <td className="py-3 px-4 font-mono">{a.punchIn}</td>
+                          <td className="py-3 px-4 font-semibold">{a.workHours} hrs</td>
+                          <td className="py-3 px-4">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400">
+                              {a.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -4364,6 +4516,15 @@ export default function DigiSailHRMDashboard() {
                         </div>
                       );
                     })}
+                  {projectsList.length === 0 && (
+                    <div className="col-span-full p-12 text-center text-slate-400 bg-slate-900/60 rounded-2xl border border-dashed border-slate-800">
+                      <Briefcase className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                      <h3 className="text-sm font-semibold text-white">No Projects Established Yet</h3>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                        No projects or client initiatives have been created for {activeCompany?.name || "this organization"}. Click "+ New Project" above to create your first initiative.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -7200,6 +7361,188 @@ export default function DigiSailHRMDashboard() {
                   onClick={() => {
                     setShowEditBranchModal(false);
                     setEditingBranch(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT EMPLOYEE (Admin) */}
+      {showEditEmployeeModal && editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-indigo-400" />
+                  Edit Employee Profile
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Update personal details, office assignments, designation, and compensation.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditEmployeeModal(false);
+                  setEditingEmployee(null);
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateEmployee} className="space-y-3.5 mt-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingEmployee.firstName}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, firstName: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingEmployee.lastName}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, lastName: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editingEmployee.email}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, email: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editingEmployee.phone}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, phone: e.target.value })}
+                    placeholder="+92 300 1234567"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Designation / Role Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingEmployee.designation}
+                  onChange={(e) => setEditingEmployee({ ...editingEmployee, designation: e.target.value })}
+                  placeholder="e.g. Senior Software Engineer"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Assigned Branch *</label>
+                  <select
+                    value={editingEmployee.branchId}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, branchId: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  >
+                    <option value="">Select Branch</option>
+                    {branches
+                      .filter((b) => b.companyId === selectedCompanyId || (!b.companyId && selectedCompanyId === "digisail-company-1"))
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          📍 {b.name} ({b.code})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Department</label>
+                  <select
+                    value={editingEmployee.departmentId}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, departmentId: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  >
+                    <option value="">No Department Assigned</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {!d.branchId || d.branchName?.includes("All Offices") ? "(🌐 Global)" : `(${d.branchName})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Employment Type</label>
+                  <select
+                    value={editingEmployee.employmentType}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, employmentType: e.target.value as any })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-white focus:outline-none focus:border-indigo-500 text-xs"
+                  >
+                    <option value="FULL_TIME">Full Time</option>
+                    <option value="PART_TIME">Part Time</option>
+                    <option value="CONTRACT">Contract</option>
+                    <option value="INTERN">Intern</option>
+                    <option value="REMOTE">Remote</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Status</label>
+                  <select
+                    value={editingEmployee.status}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, status: e.target.value as any })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-white focus:outline-none focus:border-indigo-500 text-xs"
+                  >
+                    <option value="ACTIVE">Active</option>
+                    <option value="PROBATION">Probation</option>
+                    <option value="ON_LEAVE">On Leave</option>
+                    <option value="TERMINATED">Terminated</option>
+                    <option value="RESIGNED">Resigned</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Base Salary ($)</label>
+                  <input
+                    type="number"
+                    value={editingEmployee.baseSalary}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, baseSalary: Number(e.target.value) })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditEmployeeModal(false);
+                    setEditingEmployee(null);
                   }}
                   className="px-4 py-2 rounded-xl text-slate-300 hover:bg-slate-800"
                 >

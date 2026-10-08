@@ -6,6 +6,9 @@ import { Role, ProjectStatus, TimesheetStatus } from "@prisma/client";
  * Auto-provisions demo clients and projects if the company currently has none.
  */
 export async function ensureDefaultProjects(companyId: string) {
+  // Only auto-provision demo projects for the initial DigiSail mock company
+  if (companyId !== "digisail-company-1") return;
+
   const existingCount = await prisma.project.count({
     where: { companyId },
   });
