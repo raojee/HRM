@@ -11,6 +11,7 @@ const createBranchSchema = z.object({
   city: z.string().optional(),
   country: z.string().optional(),
   timezone: z.string().default("UTC"),
+  adminName: z.string().optional(),
   branchAdminEmail: z.string().email().optional(),
   companyId: z.string().optional(),
 });
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, city, country, timezone, branchAdminEmail, companyId } = parsed.data;
+    const { name, code, city, country, timezone, branchAdminEmail, adminName, companyId } = parsed.data;
 
     const targetCompanyId = (auth.session.role === Role.SUPER_ADMIN && companyId)
       ? companyId
@@ -117,6 +118,7 @@ export async function POST(req: NextRequest) {
         country: country || null,
         timezone,
         branchAdminId,
+        adminName: adminName || null,
       },
     });
 

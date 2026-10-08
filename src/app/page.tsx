@@ -45,6 +45,7 @@ import {
   Flame,
   Target,
   LineChart,
+  Edit2,
 } from "lucide-react";
 import {
   initialCompanies,
@@ -437,6 +438,15 @@ export default function DigiSailHRMDashboard() {
   const [showCreateBranchModal, setShowCreateBranchModal] = useState(false);
   const [showCreateDeptModal, setShowCreateDeptModal] = useState(false);
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [showEditBranchModal, setShowEditBranchModal] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<{
+    id: string;
+    name: string;
+    code: string;
+    city: string;
+    country: string;
+    adminName: string;
+  } | null>(null);
   const [approvalModalCandidate, setApprovalModalCandidate] = useState<Employee | null>(null);
   const [approvalModalAction, setApprovalModalAction] = useState<"APPROVE" | "REJECT">("APPROVE");
   const [approvalComments, setApprovalComments] = useState("");
@@ -626,7 +636,7 @@ export default function DigiSailHRMDashboard() {
             code: b.code,
             city: b.city || "Headquarters",
             country: b.country || "",
-            adminName: b.branchAdmin?.employee ? `${b.branchAdmin.employee.firstName} ${b.branchAdmin.employee.lastName}` : (b.branchAdmin?.email || "Branch Admin"),
+            adminName: b.adminName || (b.branchAdmin?.employee ? `${b.branchAdmin.employee.firstName} ${b.branchAdmin.employee.lastName}` : (b.branchAdmin?.email || "Branch Admin")),
             departmentCount: b._count?.departments || 0,
             employeeCount: b._count?.employees || 0,
           }));
@@ -1644,6 +1654,7 @@ export default function DigiSailHRMDashboard() {
           code: newBranch.code.toUpperCase(),
           city: newBranch.city || undefined,
           country: newBranch.country || undefined,
+          adminName: newBranch.adminName || undefined,
           companyId: targetCompanyId,
         }),
       });
@@ -1667,6 +1678,56 @@ export default function DigiSailHRMDashboard() {
       await fetchLiveData(targetCompanyId);
     } catch (err: any) {
       showToast(err.message || "Failed to establish branch.");
+    }
+  };
+
+  // Handler: Open Edit Branch Modal
+  const handleOpenEditBranch = (b: BranchRecord) => {
+    setEditingBranch({
+      id: b.id,
+      name: b.name,
+      code: b.code,
+      city: b.city || "",
+      country: b.country || "",
+      adminName: b.adminName === "Branch Admin" ? "" : (b.adminName || ""),
+    });
+    setShowEditBranchModal(true);
+  };
+
+  // Handler: Update Branch (Company Admin)
+  const handleUpdateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBranch || !editingBranch.name || !editingBranch.code) return;
+
+    try {
+      const res = await fetch(`/api/org/branches/${editingBranch.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingBranch.name,
+          code: editingBranch.code.toUpperCase(),
+          city: editingBranch.city || null,
+          country: editingBranch.country || null,
+          adminName: editingBranch.adminName || null,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || "Failed to update branch");
+        return;
+      }
+
+      setShowEditBranchModal(false);
+      const updatedName = editingBranch.name;
+      setEditingBranch(null);
+      showToast(`Branch "${updatedName}" updated successfully!`);
+      const targetCompanyId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+        ? authenticatedUser.company.id
+        : selectedCompanyId;
+      await fetchLiveData(targetCompanyId);
+    } catch (err: any) {
+      showToast(err.message || "Failed to update branch.");
     }
   };
 
@@ -3467,9 +3528,20 @@ export default function DigiSailHRMDashboard() {
                               {b.city}, {b.country}
                             </p>
                           </div>
-                          <span className="text-xs bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20 font-medium">
-                            Branch HR: {b.adminName}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs bg-indigo-500/10 text-indigo-400 px-2.5 py-1 rounded-lg border border-indigo-500/20 font-medium">
+                              Branch HR: {b.adminName}
+                            </span>
+                            {(currentRole === "COMPANY_ADMIN" || currentRole === "SUPER_ADMIN") && (
+                              <button
+                                onClick={() => handleOpenEditBranch(b)}
+                                className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition border border-slate-700/50 hover:border-indigo-500/50"
+                                title="Edit Branch"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-300">
@@ -7034,6 +7106,108 @@ export default function DigiSailHRMDashboard() {
                   className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30"
                 >
                   Create Branch
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT BRANCH (Company Admin) */}
+      {showEditBranchModal && editingBranch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-indigo-400" />
+                Edit Company Branch
+              </h2>
+              <button
+                onClick={() => {
+                  setShowEditBranchModal(false);
+                  setEditingBranch(null);
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateBranch} className="space-y-3 mt-4 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Branch Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingBranch.name}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, name: e.target.value })}
+                  placeholder="e.g. Lahore Campus"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">Branch Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingBranch.code}
+                    onChange={(e) => setEditingBranch({ ...editingBranch, code: e.target.value })}
+                    placeholder="LHE"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium">City</label>
+                  <input
+                    type="text"
+                    value={editingBranch.city}
+                    onChange={(e) => setEditingBranch({ ...editingBranch, city: e.target.value })}
+                    placeholder="Lahore"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Country</label>
+                <input
+                  type="text"
+                  value={editingBranch.country}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, country: e.target.value })}
+                  placeholder="Pakistan"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Branch HR Admin Name</label>
+                <input
+                  type="text"
+                  value={editingBranch.adminName}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, adminName: e.target.value })}
+                  placeholder="e.g. Rao tariq"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditBranchModal(false);
+                    setEditingBranch(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shadow-indigo-600/30"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
