@@ -7,9 +7,11 @@ import { Role } from "@prisma/client";
 const createDepartmentSchema = z.object({
   name: z.string().min(1, "Department name is required"),
   code: z.string().min(1, "Department code is required"),
-  branchId: z.string().min(1, "Branch is required"),
+  branchId: z.string().optional().nullable(),
   description: z.string().optional(),
+  adminName: z.string().optional(),
   deptAdminEmail: z.string().email().optional(),
+  companyId: z.string().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -77,43 +79,51 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, branchId, description, deptAdminEmail } = parsed.data;
+    const { name, code, branchId, description, adminName, deptAdminEmail, companyId } = parsed.data;
 
-    // Verify branch belongs to current tenant (or any tenant if SUPER_ADMIN)
-    const branchWhere: any = { id: branchId };
-    if (auth.session.role !== Role.SUPER_ADMIN) {
-      branchWhere.companyId = auth.session.companyId;
-    }
-    const branch = await prisma.branch.findFirst({
-      where: branchWhere,
-    });
+    const targetCompanyId = (auth.session.role === Role.SUPER_ADMIN && companyId)
+      ? companyId
+      : auth.session.companyId;
 
-    if (!branch) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Branch not found or does not belong to your organization",
-          code: "NOT_FOUND",
-        },
-        { status: 404 }
-      );
+    let validBranchId: string | null = null;
+    if (branchId && branchId !== "ALL" && branchId !== "") {
+      const branchWhere: any = { id: branchId };
+      if (auth.session.role !== Role.SUPER_ADMIN) {
+        branchWhere.companyId = targetCompanyId;
+      }
+      const branch = await prisma.branch.findFirst({
+        where: branchWhere,
+      });
+
+      if (!branch) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Branch not found or does not belong to your organization",
+            code: "NOT_FOUND",
+          },
+          { status: 404 }
+        );
+      }
+      validBranchId = branch.id;
     }
 
     let deptAdminId: string | null = null;
     if (deptAdminEmail) {
       const adminUser = await prisma.user.findFirst({
-        where: { email: deptAdminEmail, companyId: branch.companyId },
+        where: { email: deptAdminEmail, companyId: targetCompanyId },
       });
       if (adminUser) deptAdminId = adminUser.id;
     }
 
     const department = await prisma.department.create({
       data: {
-        companyId: branch.companyId,
-        branchId,
+        companyId: targetCompanyId,
+        branchId: validBranchId,
         name,
-        code,
+        code: code.toUpperCase(),
         description: description || null,
+        adminName: adminName || null,
         deptAdminId,
       },
     });

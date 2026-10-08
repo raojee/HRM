@@ -493,7 +493,7 @@ export default function DigiSailHRMDashboard() {
   const [newDept, setNewDept] = useState({
     name: "",
     code: "",
-    branchId: "",
+    branchId: "ALL",
     branchName: "",
     adminName: "",
   });
@@ -660,10 +660,10 @@ export default function DigiSailHRMDashboard() {
           const liveDepts: DepartmentRecord[] = deptJson.data.map((d: any) => ({
             id: d.id,
             branchId: d.branchId,
-            branchName: d.branch?.name || "Main Branch",
+            branchName: d.branch?.name || "All Offices (Organization-Wide)",
             name: d.name,
             code: d.code,
-            adminName: d.deptAdmin?.employee ? `${d.deptAdmin.employee.firstName} ${d.deptAdmin.employee.lastName}` : (d.deptAdmin?.email || "Dept Admin"),
+            adminName: d.adminName || (d.deptAdmin?.employee ? `${d.deptAdmin.employee.firstName} ${d.deptAdmin.employee.lastName}` : (d.deptAdmin?.email || "Dept Admin")),
             teamCount: d._count?.teams || 0,
             employeeCount: d._count?.employees || 0,
           }));
@@ -686,7 +686,7 @@ export default function DigiSailHRMDashboard() {
             departmentName: t.department?.name || "Department",
             name: t.name,
             code: t.code,
-            leadName: t.teamLead?.employee ? `${t.teamLead.employee.firstName} ${t.teamLead.employee.lastName}` : (t.teamLead?.email || "Team Lead"),
+            leadName: t.leadName || (t.teamLead?.employee ? `${t.teamLead.employee.firstName} ${t.teamLead.employee.lastName}` : (t.teamLead?.email || "Team Lead")),
             employeeCount: t._count?.employees || 0,
           }));
           if (isIsolatedTenant) {
@@ -1731,7 +1731,7 @@ export default function DigiSailHRMDashboard() {
     }
   };
 
-  // Handler: Create Department (Branch HR)
+  // Handler: Create Department (Branch HR / Company HR)
   const handleCreateDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDept.name || !newDept.code) return;
@@ -1740,15 +1740,7 @@ export default function DigiSailHRMDashboard() {
       ? authenticatedUser.company.id
       : selectedCompanyId;
 
-    const activeBranches = branches.filter(
-      (b) => b.companyId === targetCompanyId || (!b.companyId && targetCompanyId === "digisail-company-1")
-    );
-    const branchId = newDept.branchId || (activeBranches[0] ? activeBranches[0].id : "");
-
-    if (!branchId) {
-      showToast("Please select a valid branch first.");
-      return;
-    }
+    const branchId = (!newDept.branchId || newDept.branchId === "ALL") ? null : newDept.branchId;
 
     try {
       const res = await fetch("/api/org/departments", {
@@ -1758,6 +1750,8 @@ export default function DigiSailHRMDashboard() {
           name: newDept.name,
           code: newDept.code.toUpperCase(),
           branchId: branchId,
+          adminName: newDept.adminName || undefined,
+          companyId: targetCompanyId,
         }),
       });
 
@@ -1768,7 +1762,7 @@ export default function DigiSailHRMDashboard() {
       }
 
       setShowCreateDeptModal(false);
-      setNewDept({ name: "", code: "", branchId: "", branchName: "", adminName: "" });
+      setNewDept({ name: "", code: "", branchId: "ALL", branchName: "", adminName: "" });
       showToast(`Department "${newDept.name}" established successfully!`);
       await fetchLiveData(targetCompanyId);
     } catch (err: any) {
@@ -1786,6 +1780,7 @@ export default function DigiSailHRMDashboard() {
       : selectedCompanyId;
 
     const activeDepts = departments.filter((d) => {
+      if (!d.branchId) return true;
       const branch = branches.find((b) => b.id === d.branchId);
       return branch ? (branch.companyId === targetCompanyId || (!branch.companyId && targetCompanyId === "digisail-company-1")) : true;
     });
@@ -1804,6 +1799,7 @@ export default function DigiSailHRMDashboard() {
           name: newTeam.name,
           code: newTeam.code.toUpperCase(),
           departmentId: departmentId,
+          leadName: newTeam.leadName || undefined,
         }),
       });
 
@@ -3580,7 +3576,13 @@ export default function DigiSailHRMDashboard() {
                             {d.code}
                           </span>
                           <h4 className="text-sm font-bold text-white mt-0.5">{d.name}</h4>
-                          <p className="text-[11px] text-slate-400">{d.branchName}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            {!d.branchId || d.branchName?.includes("All Offices") ? (
+                              <span className="text-cyan-400 font-medium">🌐 {d.branchName || "All Offices (Organization-Wide)"}</span>
+                            ) : (
+                              <span>📍 {d.branchName}</span>
+                            )}
+                          </p>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold">
                           Head: {d.adminName}
@@ -7215,15 +7217,20 @@ export default function DigiSailHRMDashboard() {
         </div>
       )}
 
-      {/* MODAL: CREATE DEPARTMENT (Branch HR) */}
+      {/* MODAL: CREATE DEPARTMENT (Branch / Company HR) */}
       {showCreateDeptModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Layers className="w-5 h-5 text-cyan-400" />
-                Create Branch Department
-              </h2>
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-cyan-400" />
+                  Create Department
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Establish for a specific branch or organization-wide for all offices.
+                </p>
+              </div>
               <button
                 onClick={() => setShowCreateDeptModal(false)}
                 className="text-slate-400 hover:text-white"
@@ -7254,21 +7261,22 @@ export default function DigiSailHRMDashboard() {
                     value={newDept.code}
                     onChange={(e) => setNewDept({ ...newDept, code: e.target.value })}
                     placeholder="QA"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 uppercase"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Branch *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">Branch / Office Scope *</label>
                   <select
-                    value={newDept.branchId || (branches.filter(b => b.companyId === selectedCompanyId || (!b.companyId && selectedCompanyId === "digisail-company-1"))[0]?.id || "")}
+                    value={newDept.branchId || "ALL"}
                     onChange={(e) => setNewDept({ ...newDept, branchId: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-cyan-500 font-medium"
                   >
+                    <option value="ALL">🌐 All Offices (Organization-Wide)</option>
                     {branches
                       .filter((b) => b.companyId === selectedCompanyId || (!b.companyId && selectedCompanyId === "digisail-company-1"))
                       .map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.name} ({b.code})
+                          📍 {b.name} ({b.code})
                         </option>
                       ))}
                   </select>
@@ -7359,7 +7367,7 @@ export default function DigiSailHRMDashboard() {
                   >
                     {departments.map((d) => (
                       <option key={d.id} value={d.id}>
-                        {d.name} ({d.code})
+                        {d.name} ({d.code}) {!d.branchId || d.branchName?.includes("All Offices") ? "• 🌐 Global" : `• 📍 ${d.branchName}`}
                       </option>
                     ))}
                   </select>

@@ -9,6 +9,7 @@ const createTeamSchema = z.object({
   code: z.string().min(1, "Team code is required"),
   departmentId: z.string().min(1, "Department is required"),
   description: z.string().optional(),
+  leadName: z.string().optional(),
   teamLeadEmail: z.string().email().optional(),
 });
 
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, departmentId, description, teamLeadEmail } = parsed.data;
+    const { name, code, departmentId, description, leadName, teamLeadEmail } = parsed.data;
 
     // Verify department belongs to current tenant (or any tenant if SUPER_ADMIN)
     const deptWhere: any = { id: departmentId };
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
         name,
         code,
         description: description || null,
+        leadName: leadName || null,
         teamLeadId,
       },
     });
