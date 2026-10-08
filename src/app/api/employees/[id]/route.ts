@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requireRole } from "@/lib/auth/session";
+import { hashPassword } from "@/lib/auth/password";
 import { EmploymentType, OnboardingStatus, EmployeeStatus, Role } from "@prisma/client";
 
 const updateEmployeeSchema = z.object({
@@ -18,6 +19,8 @@ const updateEmployeeSchema = z.object({
   onboardingStatus: z.nativeEnum(OnboardingStatus).optional(),
   baseSalary: z.number().positive().optional().nullable(),
   currency: z.string().optional(),
+  newPassword: z.string().min(6, "Password must be at least 6 characters").optional(),
+  userRole: z.nativeEnum(Role).optional(),
 });
 
 interface RouteParams {
@@ -39,6 +42,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         team: { select: { id: true, name: true, code: true } },
         designation: { select: { id: true, title: true, code: true } },
         company: { select: { id: true, name: true } },
+        user: { select: { id: true, email: true, role: true, isActive: true } },
       },
     });
 
@@ -222,6 +226,55 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // User account login credential sync / update
+    if (data.newPassword || data.email || data.userRole) {
+      let linkedUser = existingEmployee.userId
+        ? await prisma.user.findUnique({ where: { id: existingEmployee.userId } })
+        : await prisma.user.findUnique({ where: { email: existingEmployee.email } });
+
+      if (data.newPassword) {
+        const passwordHash = await hashPassword(data.newPassword);
+        if (linkedUser) {
+          linkedUser = await prisma.user.update({
+            where: { id: linkedUser.id },
+            data: {
+              passwordHash,
+              email: data.email || linkedUser.email,
+              role: data.userRole || linkedUser.role,
+            },
+          });
+          updateData.userId = linkedUser.id;
+        } else {
+          linkedUser = await prisma.user.create({
+            data: {
+              email: data.email || existingEmployee.email,
+              passwordHash,
+              role: data.userRole || Role.EMPLOYEE,
+              companyId: existingEmployee.companyId,
+            },
+          });
+          updateData.userId = linkedUser.id;
+        }
+      } else if (linkedUser) {
+        const userUpdates: any = {};
+        if (data.email && data.email !== linkedUser.email) {
+          userUpdates.email = data.email;
+        }
+        if (data.userRole && data.userRole !== linkedUser.role) {
+          userUpdates.role = data.userRole;
+        }
+        if (Object.keys(userUpdates).length > 0) {
+          await prisma.user.update({
+            where: { id: linkedUser.id },
+            data: userUpdates,
+          });
+        }
+        if (!existingEmployee.userId) {
+          updateData.userId = linkedUser.id;
+        }
+      }
+    }
+
     const updatedEmployee = await prisma.employee.update({
       where: { id },
       data: updateData,
@@ -230,6 +283,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
         department: { select: { id: true, name: true, code: true } },
         team: { select: { id: true, name: true, code: true } },
         designation: { select: { id: true, title: true, code: true } },
+        user: { select: { id: true, email: true, role: true, isActive: true } },
       },
     });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Users,
   Clock,
@@ -251,6 +251,7 @@ export default function DigiSailHRMDashboard() {
     | "billing"
     | "ai-insights"
   >("dashboard");
+  const hasInitializedTab = useRef(false);
 
   // State Management: Companies (SaaS Multi-Tenancy)
   const [companies, setCompanies] = useState<CompanyRecord[]>(initialCompanies);
@@ -465,6 +466,8 @@ export default function DigiSailHRMDashboard() {
     employmentType: EmploymentType;
     status: EmployeeStatus;
     baseSalary: number;
+    newPassword?: string;
+    userRole?: Role;
   } | null>(null);
   const [approvalModalCandidate, setApprovalModalCandidate] = useState<Employee | null>(null);
   const [approvalModalAction, setApprovalModalAction] = useState<"APPROVE" | "REJECT">("APPROVE");
@@ -570,7 +573,10 @@ export default function DigiSailHRMDashboard() {
 
           if (userRole !== "SUPER_ADMIN") {
             setCurrentRole(userRole);
-            setActiveTab("dashboard");
+            if (!hasInitializedTab.current) {
+              hasInitializedTab.current = true;
+              setActiveTab("dashboard");
+            }
             if (user.company) {
               targetCompanyId = user.company.id;
               setSelectedCompanyId(user.company.id);
@@ -593,7 +599,10 @@ export default function DigiSailHRMDashboard() {
               setCompanies([userCompRecord]);
             }
           } else {
-            setActiveTab((prev) => (prev === "dashboard" ? "companies" : prev));
+            if (!hasInitializedTab.current) {
+              hasInitializedTab.current = true;
+              setActiveTab((prev) => (prev === "dashboard" ? "companies" : prev));
+            }
           }
         }
       }
@@ -1806,6 +1815,8 @@ export default function DigiSailHRMDashboard() {
       employmentType: emp.employmentType || "FULL_TIME",
       status: emp.status || "ACTIVE",
       baseSalary: emp.baseSalary || 0,
+      newPassword: "",
+      userRole: "EMPLOYEE",
     });
     setShowEditEmployeeModal(true);
   };
@@ -1835,6 +1846,8 @@ export default function DigiSailHRMDashboard() {
           employmentType: editingEmployee.employmentType,
           status: editingEmployee.status,
           baseSalary: editingEmployee.baseSalary ? Number(editingEmployee.baseSalary) : null,
+          newPassword: editingEmployee.newPassword && editingEmployee.newPassword.trim().length >= 6 ? editingEmployee.newPassword.trim() : undefined,
+          userRole: editingEmployee.userRole || undefined,
         }),
       });
 
@@ -3821,7 +3834,12 @@ export default function DigiSailHRMDashboard() {
                         <p>📍 Branch: {emp.branch}</p>
                         <p>📁 Department: {emp.department}</p>
                         {emp.team && <p>👥 Team: {emp.team}</p>}
-                        <p>✉️ Email: {emp.email}</p>
+                        <div className="flex items-center justify-between">
+                          <p>✉️ Email: {emp.email}</p>
+                          <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 font-mono flex items-center gap-1" title="Portal account active at /login">
+                            <span>🔑</span> Portal User
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -7534,6 +7552,37 @@ export default function DigiSailHRMDashboard() {
                     onChange={(e) => setEditingEmployee({ ...editingEmployee, baseSalary: Number(e.target.value) })}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                   />
+                </div>
+              </div>
+
+              {/* Portal Login Credentials Section */}
+              <div className="p-3 bg-slate-800/60 rounded-xl border border-indigo-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                    <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Portal Login & Security</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-medium">
+                    Portal: /login
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Login Email: <span className="font-mono text-white font-semibold">{editingEmployee.email}</span>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">
+                    Set / Reset Portal Password (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingEmployee.newPassword || ""}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, newPassword: e.target.value })}
+                    placeholder="Leave blank to keep existing (Default initial: welcome_2026)"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-xs"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Employee can log in at <span className="text-indigo-400 font-mono">/login</span> using their email and this password to access self-service dashboard, punch attendance, and submit leave requests.
+                  </p>
                 </div>
               </div>
 
