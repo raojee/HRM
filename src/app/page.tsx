@@ -471,11 +471,11 @@ export default function DigiSailHRMDashboard() {
 
   // Form State: Create Branch
   const [newBranch, setNewBranch] = useState({
-    companyId: "digisail-company-1",
+    companyId: "",
     name: "",
     code: "",
     city: "",
-    country: "United States",
+    country: "Pakistan",
     adminName: "",
   });
 
@@ -483,7 +483,8 @@ export default function DigiSailHRMDashboard() {
   const [newDept, setNewDept] = useState({
     name: "",
     code: "",
-    branchName: "New York Headquarters",
+    branchId: "",
+    branchName: "",
     adminName: "",
   });
 
@@ -491,7 +492,8 @@ export default function DigiSailHRMDashboard() {
   const [newTeam, setNewTeam] = useState({
     name: "",
     code: "",
-    departmentName: "Engineering",
+    departmentId: "",
+    departmentName: "",
     leadName: "",
   });
 
@@ -1625,85 +1627,138 @@ export default function DigiSailHRMDashboard() {
   };
 
   // Handler: Create Branch (Company Admin)
-  const handleCreateBranch = (e: React.FormEvent) => {
+  const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBranch.name || !newBranch.code) return;
 
-    const targetCompanyId = newBranch.companyId || selectedCompanyId;
-    const targetComp = companies.find((c) => c.id === targetCompanyId) || companies[0];
+    const targetCompanyId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+      ? authenticatedUser.company.id
+      : (newBranch.companyId || selectedCompanyId);
 
-    const branch: BranchRecord = {
-      id: `branch-${Date.now()}`,
-      companyId: targetCompanyId,
-      companyName: targetComp?.name || "DigiSail Global Inc.",
-      name: newBranch.name,
-      code: newBranch.code.toUpperCase(),
-      city: newBranch.city,
-      country: newBranch.country,
-      adminName: newBranch.adminName || "Assigned Branch HR",
-      departmentCount: 0,
-      employeeCount: 0,
-    };
+    try {
+      const res = await fetch("/api/org/branches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newBranch.name,
+          code: newBranch.code.toUpperCase(),
+          city: newBranch.city || undefined,
+          country: newBranch.country || undefined,
+          companyId: targetCompanyId,
+        }),
+      });
 
-    setBranches([...branches, branch]);
-    setCompanies(
-      companies.map((c) =>
-        c.id === targetCompanyId ? { ...c, branchCount: c.branchCount + 1 } : c
-      )
-    );
-    setShowCreateBranchModal(false);
-    setNewBranch({
-      companyId: selectedCompanyId,
-      name: "",
-      code: "",
-      city: "",
-      country: "United States",
-      adminName: "",
-    });
-    showToast(`Branch ${branch.name} established under "${targetComp?.name}"!`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || "Failed to create branch");
+        return;
+      }
+
+      setShowCreateBranchModal(false);
+      setNewBranch({
+        companyId: targetCompanyId,
+        name: "",
+        code: "",
+        city: "",
+        country: "Pakistan",
+        adminName: "",
+      });
+      showToast(`Branch "${newBranch.name}" created successfully!`);
+      await fetchLiveData(targetCompanyId);
+    } catch (err: any) {
+      showToast(err.message || "Failed to establish branch.");
+    }
   };
 
   // Handler: Create Department (Branch HR)
-  const handleCreateDept = (e: React.FormEvent) => {
+  const handleCreateDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDept.name || !newDept.code) return;
 
-    const dept: DepartmentRecord = {
-      id: `dept-${Date.now()}`,
-      name: newDept.name,
-      code: newDept.code.toUpperCase(),
-      branchId: "branch-1",
-      branchName: newDept.branchName,
-      adminName: newDept.adminName || "Assigned Dept Admin",
-      teamCount: 0,
-      employeeCount: 0,
-    };
+    const targetCompanyId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+      ? authenticatedUser.company.id
+      : selectedCompanyId;
 
-    setDepartments([...departments, dept]);
-    setShowCreateDeptModal(false);
-    setNewDept({ name: "", code: "", branchName: "New York Headquarters", adminName: "" });
-    showToast(`Department ${dept.name} established in ${dept.branchName}!`);
+    const activeBranches = branches.filter(
+      (b) => b.companyId === targetCompanyId || (!b.companyId && targetCompanyId === "digisail-company-1")
+    );
+    const branchId = newDept.branchId || (activeBranches[0] ? activeBranches[0].id : "");
+
+    if (!branchId) {
+      showToast("Please select a valid branch first.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/org/departments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newDept.name,
+          code: newDept.code.toUpperCase(),
+          branchId: branchId,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || "Failed to create department");
+        return;
+      }
+
+      setShowCreateDeptModal(false);
+      setNewDept({ name: "", code: "", branchId: "", branchName: "", adminName: "" });
+      showToast(`Department "${newDept.name}" established successfully!`);
+      await fetchLiveData(targetCompanyId);
+    } catch (err: any) {
+      showToast(err.message || "Failed to establish department.");
+    }
   };
 
   // Handler: Create Team (Dept Admin)
-  const handleCreateTeam = (e: React.FormEvent) => {
+  const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTeam.name || !newTeam.code) return;
 
-    const team: TeamRecord = {
-      id: `team-${Date.now()}`,
-      name: newTeam.name,
-      code: newTeam.code.toUpperCase(),
-      departmentId: "dept-1",
-      departmentName: newTeam.departmentName,
-      leadName: newTeam.leadName || "Assigned Team Lead",
-      memberCount: 0,
-    };
+    const targetCompanyId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+      ? authenticatedUser.company.id
+      : selectedCompanyId;
 
-    setTeams([...teams, team]);
-    setShowCreateTeamModal(false);
-    setNewTeam({ name: "", code: "", departmentName: "Engineering", leadName: "" });
-    showToast(`Team ${team.name} created!`);
+    const activeDepts = departments.filter((d) => {
+      const branch = branches.find((b) => b.id === d.branchId);
+      return branch ? (branch.companyId === targetCompanyId || (!branch.companyId && targetCompanyId === "digisail-company-1")) : true;
+    });
+    const departmentId = newTeam.departmentId || (activeDepts[0] ? activeDepts[0].id : "");
+
+    if (!departmentId) {
+      showToast("Please select a valid department first.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/org/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newTeam.name,
+          code: newTeam.code.toUpperCase(),
+          departmentId: departmentId,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.error || "Failed to create team");
+        return;
+      }
+
+      setShowCreateTeamModal(false);
+      setNewTeam({ name: "", code: "", departmentId: "", departmentName: "", leadName: "" });
+      showToast(`Team "${newTeam.name}" created successfully!`);
+      await fetchLiveData(targetCompanyId);
+    } catch (err: any) {
+      showToast(err.message || "Failed to create team.");
+    }
   };
 
   // Filtered active employees
@@ -3187,7 +3242,13 @@ export default function DigiSailHRMDashboard() {
                   )}
                   {(currentRole === "COMPANY_ADMIN" || currentRole === "SUPER_ADMIN") && (
                     <button
-                      onClick={() => setShowCreateBranchModal(true)}
+                      onClick={() => {
+                        const compId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+                          ? authenticatedUser.company.id
+                          : selectedCompanyId;
+                        setNewBranch((prev) => ({ ...prev, companyId: compId }));
+                        setShowCreateBranchModal(true);
+                      }}
                       className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -3362,10 +3423,13 @@ export default function DigiSailHRMDashboard() {
                   {(currentRole === "COMPANY_ADMIN" || currentRole === "SUPER_ADMIN") && (
                     <button
                       onClick={() => {
-                        setNewBranch({
-                          ...newBranch,
-                          companyId: selectedCompanyId,
-                        });
+                        const compId = (authenticatedUser && authenticatedUser.role !== "SUPER_ADMIN" && authenticatedUser.company)
+                          ? authenticatedUser.company.id
+                          : selectedCompanyId;
+                        setNewBranch((prev) => ({
+                          ...prev,
+                          companyId: compId,
+                        }));
                         setShowCreateBranchModal(true);
                       }}
                       className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
@@ -6899,7 +6963,8 @@ export default function DigiSailHRMDashboard() {
                   onChange={(e) =>
                     setNewBranch({ ...newBranch, companyId: e.target.value })
                   }
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  disabled={currentRole !== "SUPER_ADMIN"}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500 disabled:opacity-60"
                 >
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -7019,17 +7084,19 @@ export default function DigiSailHRMDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Branch</label>
+                  <label className="block text-slate-400 mb-1 font-medium">Branch *</label>
                   <select
-                    value={newDept.branchName}
-                    onChange={(e) => setNewDept({ ...newDept, branchName: e.target.value })}
+                    value={newDept.branchId || (branches.filter(b => b.companyId === selectedCompanyId || (!b.companyId && selectedCompanyId === "digisail-company-1"))[0]?.id || "")}
+                    onChange={(e) => setNewDept({ ...newDept, branchId: e.target.value })}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500"
                   >
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.name}>
-                        {b.name}
-                      </option>
-                    ))}
+                    {branches
+                      .filter((b) => b.companyId === selectedCompanyId || (!b.companyId && selectedCompanyId === "digisail-company-1"))
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
@@ -7110,15 +7177,15 @@ export default function DigiSailHRMDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Department</label>
+                  <label className="block text-slate-400 mb-1 font-medium">Department *</label>
                   <select
-                    value={newTeam.departmentName}
-                    onChange={(e) => setNewTeam({ ...newTeam, departmentName: e.target.value })}
+                    value={newTeam.departmentId || (departments[0]?.id || "")}
+                    onChange={(e) => setNewTeam({ ...newTeam, departmentId: e.target.value })}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-indigo-500"
                   >
                     {departments.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.code})
                       </option>
                     ))}
                   </select>

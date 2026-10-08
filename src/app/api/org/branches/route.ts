@@ -12,6 +12,7 @@ const createBranchSchema = z.object({
   country: z.string().optional(),
   timezone: z.string().default("UTC"),
   branchAdminEmail: z.string().email().optional(),
+  companyId: z.string().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -80,10 +81,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, city, country, timezone, branchAdminEmail } = parsed.data;
+    const { name, code, city, country, timezone, branchAdminEmail, companyId } = parsed.data;
+
+    const targetCompanyId = (auth.session.role === Role.SUPER_ADMIN && companyId)
+      ? companyId
+      : auth.session.companyId;
 
     // Enforce branch quota by tier
-    const branchCheck = await checkBranchLimit(auth.session.companyId);
+    const branchCheck = await checkBranchLimit(targetCompanyId);
     if (!branchCheck.allowed) {
       return NextResponse.json(
         {
@@ -97,15 +102,15 @@ export async function POST(req: NextRequest) {
 
     let branchAdminId: string | null = null;
     if (branchAdminEmail) {
-      const adminUser = await prisma.user.findUnique({
-        where: { email: branchAdminEmail },
+      const adminUser = await prisma.user.findFirst({
+        where: { email: branchAdminEmail, companyId: targetCompanyId },
       });
       if (adminUser) branchAdminId = adminUser.id;
     }
 
     const branch = await prisma.branch.create({
       data: {
-        companyId: auth.session.companyId,
+        companyId: targetCompanyId,
         name,
         code,
         city: city || null,

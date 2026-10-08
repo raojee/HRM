@@ -84,9 +84,13 @@ export async function POST(req: NextRequest) {
 
     const { name, code, departmentId, description, teamLeadEmail } = parsed.data;
 
-    // Verify department belongs to current tenant
+    // Verify department belongs to current tenant (or any tenant if SUPER_ADMIN)
+    const deptWhere: any = { id: departmentId };
+    if (auth.session.role !== Role.SUPER_ADMIN) {
+      deptWhere.companyId = auth.session.companyId;
+    }
     const department = await prisma.department.findFirst({
-      where: { id: departmentId, companyId: auth.session.companyId },
+      where: deptWhere,
     });
 
     if (!department) {
@@ -103,7 +107,7 @@ export async function POST(req: NextRequest) {
     let teamLeadId: string | null = null;
     if (teamLeadEmail) {
       const leadUser = await prisma.user.findFirst({
-        where: { email: teamLeadEmail, companyId: auth.session.companyId },
+        where: { email: teamLeadEmail, companyId: department.companyId },
       });
       if (leadUser) teamLeadId = leadUser.id;
     }

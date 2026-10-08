@@ -79,9 +79,13 @@ export async function POST(req: NextRequest) {
 
     const { name, code, branchId, description, deptAdminEmail } = parsed.data;
 
-    // Verify branch belongs to current tenant
+    // Verify branch belongs to current tenant (or any tenant if SUPER_ADMIN)
+    const branchWhere: any = { id: branchId };
+    if (auth.session.role !== Role.SUPER_ADMIN) {
+      branchWhere.companyId = auth.session.companyId;
+    }
     const branch = await prisma.branch.findFirst({
-      where: { id: branchId, companyId: auth.session.companyId },
+      where: branchWhere,
     });
 
     if (!branch) {
@@ -98,14 +102,14 @@ export async function POST(req: NextRequest) {
     let deptAdminId: string | null = null;
     if (deptAdminEmail) {
       const adminUser = await prisma.user.findFirst({
-        where: { email: deptAdminEmail, companyId: auth.session.companyId },
+        where: { email: deptAdminEmail, companyId: branch.companyId },
       });
       if (adminUser) deptAdminId = adminUser.id;
     }
 
     const department = await prisma.department.create({
       data: {
-        companyId: auth.session.companyId,
+        companyId: branch.companyId,
         branchId,
         name,
         code,
