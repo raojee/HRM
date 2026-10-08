@@ -122,9 +122,8 @@ export default function LoginPage() {
 
       setSuccessMessage(`Welcome back, ${data.data?.user?.name || "User"}! Redirecting...`);
       setTimeout(() => {
-        router.push("/");
-        router.refresh();
-      }, 700);
+        window.location.href = "/";
+      }, 500);
     } catch (err) {
       setErrorMessage("Network error connecting to authentication server.");
       setIsLoading(false);
@@ -158,9 +157,8 @@ export default function LoginPage() {
 
       setSuccessMessage(`Logged in as ${persona.name} (${persona.title})!`);
       setTimeout(() => {
-        router.push("/");
-        router.refresh();
-      }, 600);
+        window.location.href = "/";
+      }, 500);
     } catch (err) {
       setErrorMessage("Could not connect to persona session handler.");
       setIsLoading(false);

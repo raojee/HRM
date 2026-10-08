@@ -19,12 +19,15 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const departmentId = searchParams.get("departmentId");
+    const targetCompId = (auth.session.role === Role.SUPER_ADMIN && searchParams.get("companyId"))
+      ? searchParams.get("companyId")!
+      : auth.session.companyId;
 
     const where: any = {};
     if (departmentId) {
       where.departmentId = departmentId;
     } else {
-      where.department = { companyId: auth.session.companyId };
+      where.department = { companyId: targetCompId };
     }
 
     const teams = await prisma.team.findMany({

@@ -11,7 +11,22 @@ export async function GET(req: NextRequest) {
       where: { id: auth.session.sub },
       include: {
         company: {
-          select: { id: true, name: true, currency: true, timezone: true },
+          select: {
+            id: true,
+            name: true,
+            legalName: true,
+            subdomain: true,
+            currency: true,
+            timezone: true,
+            subscription: {
+              select: {
+                tier: true,
+                status: true,
+                maxSeats: true,
+                maxBranches: true,
+              },
+            },
+          },
         },
         employee: {
           select: {

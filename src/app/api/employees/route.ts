@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth/session";
-import { EmploymentType, OnboardingStatus, EmployeeStatus } from "@prisma/client";
+import { EmploymentType, OnboardingStatus, EmployeeStatus, Role } from "@prisma/client";
 import { checkSeatLimit } from "@/lib/services/tenantService";
 
 const createEmployeeSchema = z.object({
@@ -11,7 +11,7 @@ const createEmployeeSchema = z.object({
   email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
   branchId: z.string().min(1, "Branch is required"),
-  departmentId: z.string().min(1, "Department is required"),
+  departmentId: z.string().optional(),
   teamId: z.string().optional(),
   designationTitle: z.string().min(1, "Designation title is required"),
   employmentType: z.nativeEnum(EmploymentType).default(EmploymentType.FULL_TIME),
@@ -33,8 +33,12 @@ export async function GET(req: NextRequest) {
     const onboardingStatus = searchParams.get("onboardingStatus");
     const status = searchParams.get("status");
 
+    const targetCompanyId = (auth.session.role === Role.SUPER_ADMIN && searchParams.get("companyId"))
+      ? searchParams.get("companyId")!
+      : auth.session.companyId;
+
     const where: any = {
-      companyId: auth.session.companyId,
+      companyId: targetCompanyId,
     };
 
     if (branchId) where.branchId = branchId;
@@ -133,15 +137,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify department belongs to current tenant
-    const department = await prisma.department.findFirst({
-      where: { id: data.departmentId, companyId: auth.session.companyId },
-    });
-    if (!department) {
-      return NextResponse.json(
-        { success: false, error: "Selected department does not belong to your organization", code: "NOT_FOUND" },
-        { status: 404 }
-      );
+    // Verify department belongs to current tenant (if specified)
+    let department = null;
+    if (data.departmentId) {
+      department = await prisma.department.findFirst({
+        where: { id: data.departmentId, companyId: auth.session.companyId },
+      });
+      if (!department) {
+        return NextResponse.json(
+          { success: false, error: "Selected department does not belong to your organization", code: "NOT_FOUND" },
+          { status: 404 }
+        );
+      }
     }
 
     // Auto-create or find Designation
@@ -182,7 +189,7 @@ export async function POST(req: NextRequest) {
         email: data.email,
         phone: data.phone || null,
         branchId: data.branchId,
-        departmentId: data.departmentId,
+        departmentId: department?.id || null,
         teamId: data.teamId || null,
         designationId: designation.id,
         employmentType: data.employmentType,

@@ -325,12 +325,26 @@ export async function createTenant(data: CreateTenantInput, session: AuthTokenPa
       },
     });
 
-    // 4. Create Employee Record for Admin
+    // 4. Create Initial Department
+    const deptCode = `GEN-${cleanSubdomain.toUpperCase().slice(0, 3)}`;
+    const department = await tx.department.create({
+      data: {
+        companyId: company.id,
+        branchId: branch.id,
+        name: "General Operations",
+        code: deptCode,
+        deptAdminId: adminUser.id,
+        description: "Primary operations and management department",
+      },
+    });
+
+    // 5. Create Employee Record for Admin
     const empNumber = `EMP-${cleanSubdomain.toUpperCase().slice(0, 3)}-001`;
     await tx.employee.create({
       data: {
         companyId: company.id,
         branchId: branch.id,
+        departmentId: department.id,
         userId: adminUser.id,
         employeeNumber: empNumber,
         firstName,

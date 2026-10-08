@@ -19,9 +19,17 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req);
     if (auth.errorResponse) return auth.errorResponse;
 
+    const { searchParams } = new URL(req.url);
+    const targetCompId = (auth.session.role === Role.SUPER_ADMIN && searchParams.get("companyId"))
+      ? searchParams.get("companyId")!
+      : auth.session.companyId;
+
     const branches = await prisma.branch.findMany({
-      where: { companyId: auth.session.companyId },
+      where: { companyId: targetCompId },
       include: {
+        company: {
+          select: { id: true, name: true },
+        },
         branchAdmin: {
           select: {
             id: true,

@@ -19,9 +19,12 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
+    const targetCompId = (auth.session.role === Role.SUPER_ADMIN && searchParams.get("companyId"))
+      ? searchParams.get("companyId")!
+      : auth.session.companyId;
 
     const where: any = {
-      employee: { companyId: auth.session.companyId },
+      employee: { companyId: targetCompId },
     };
 
     if (status) where.status = status as LeaveStatus;

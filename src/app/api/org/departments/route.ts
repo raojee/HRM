@@ -19,8 +19,11 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const branchId = searchParams.get("branchId");
+    const targetCompId = (auth.session.role === Role.SUPER_ADMIN && searchParams.get("companyId"))
+      ? searchParams.get("companyId")!
+      : auth.session.companyId;
 
-    const where: any = { companyId: auth.session.companyId };
+    const where: any = { companyId: targetCompId };
     if (branchId) where.branchId = branchId;
 
     const departments = await prisma.department.findMany({

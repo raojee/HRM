@@ -164,7 +164,73 @@ export default function DigiSailHRMDashboard() {
   // Current Active Persona / Role
   const [currentRole, setCurrentRole] = useState<Role>("SUPER_ADMIN");
   const [sessionUserRole, setSessionUserRole] = useState<Role>("SUPER_ADMIN");
-  const currentUser = personas[currentRole];
+  const [authenticatedUser, setAuthenticatedUser] = useState<{
+    id: string;
+    email: string;
+    name: string;
+    role: Role;
+    company?: {
+      id: string;
+      name: string;
+      legalName?: string;
+      subdomain?: string;
+      currency?: string;
+      timezone?: string;
+      subscription?: {
+        tier: string;
+        status: string;
+        maxSeats?: number;
+        maxBranches?: number;
+      };
+    };
+    employee?: {
+      id?: string;
+      employeeNumber?: string;
+      firstName?: string;
+      lastName?: string;
+      avatarUrl?: string | null;
+      branchId?: string;
+      departmentId?: string;
+      teamId?: string;
+      status?: string;
+      onboardingStatus?: string;
+      designation?: { title?: string };
+      branch?: { id?: string; name?: string; code?: string };
+      department?: { id?: string; name?: string; code?: string };
+    };
+    administeredBranches?: any[];
+    administeredDepartments?: any[];
+    ledTeams?: any[];
+  } | null>(null);
+
+  // If Super Admin deliberately switches perspective in demo mode, show that demo persona.
+  // Otherwise, if an authenticated session user exists, show the user's REAL account profile!
+  const isDemoRoleSwitched = sessionUserRole === "SUPER_ADMIN" && currentRole !== "SUPER_ADMIN";
+  const currentUser: UserPersona = (authenticatedUser && !isDemoRoleSwitched)
+    ? {
+        role: currentRole,
+        name: authenticatedUser.name || (authenticatedUser.email ? authenticatedUser.email.split("@")[0] : "Administrator"),
+        email: authenticatedUser.email,
+        title: authenticatedUser.employee?.designation?.title || (
+          authenticatedUser.role === "COMPANY_ADMIN" ? "Company HR Director" :
+          authenticatedUser.role === "SUPER_ADMIN" ? "Global SaaS Super Admin" :
+          authenticatedUser.role === "BRANCH_ADMIN" ? "Branch HR Manager" :
+          authenticatedUser.role === "DEPARTMENT_ADMIN" ? "Department Head" :
+          authenticatedUser.role === "TEAM_LEAD" ? "Team Lead" : "Staff Member"
+        ),
+        avatar: authenticatedUser.employee?.avatarUrl ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(authenticatedUser.name || authenticatedUser.email)}&background=6366f1&color=fff&bold=true`,
+        branch: authenticatedUser.employee?.branch?.name || (
+          authenticatedUser.role === "COMPANY_ADMIN" || authenticatedUser.role === "SUPER_ADMIN"
+            ? "All Branches"
+            : "Main Branch"
+        ),
+        department: authenticatedUser.employee?.department?.name || (
+          authenticatedUser.role === "COMPANY_ADMIN" ? "Executive" : "Operations"
+        ),
+        team: authenticatedUser.employee?.department?.name,
+      }
+    : personas[currentRole];
   const canSwitchRole = sessionUserRole === "SUPER_ADMIN";
 
   // Active Tab
@@ -455,31 +521,60 @@ export default function DigiSailHRMDashboard() {
   }, []);
 
   // Sync Live Data from Backend API
-  const fetchLiveData = async () => {
+  const fetchLiveData = async (overrideCompanyId?: string) => {
     try {
       let effectiveRole: Role | null = sessionUserRole;
+      let targetCompanyId = overrideCompanyId || selectedCompanyId;
+
       // 0. Fetch authenticated session user to enforce role restrictions
       const meRes = await fetch("/api/auth/me");
       if (meRes.ok) {
         const meJson = await meRes.json();
         if (meJson.success && meJson.data?.user) {
-          const userRole = meJson.data.user.role as Role;
+          const user = meJson.data.user;
+          setAuthenticatedUser(user);
+          const userRole = user.role as Role;
           effectiveRole = userRole;
           setSessionUserRole(userRole);
+
           if (userRole !== "SUPER_ADMIN") {
             setCurrentRole(userRole);
             setActiveTab("dashboard");
+            if (user.company) {
+              targetCompanyId = user.company.id;
+              setSelectedCompanyId(user.company.id);
+              const userCompRecord: CompanyRecord = {
+                id: user.company.id,
+                name: user.company.name,
+                legalName: user.company.legalName || user.company.name,
+                subdomain: user.company.subdomain || "tenant",
+                plan: (user.company.subscription?.tier || "GROWTH") as SubscriptionTier,
+                currency: user.company.currency || "USD",
+                timezone: user.company.timezone || "America/New_York",
+                status: (user.company.subscription?.status || "ACTIVE") as any,
+                adminName: user.name,
+                adminEmail: user.email,
+                branchCount: 1,
+                employeeCount: 1,
+                monthlyPrice: user.company.subscription?.tier === "ENTERPRISE" ? 1999 : 799,
+                createdAt: new Date().toISOString(),
+              };
+              setCompanies([userCompRecord]);
+            }
           } else {
             setActiveTab((prev) => (prev === "dashboard" ? "companies" : prev));
           }
         }
       }
 
+      const isIsolatedTenant = effectiveRole !== "SUPER_ADMIN" || targetCompanyId !== "digisail-company-1";
+      const companyQueryParam = effectiveRole === "SUPER_ADMIN" && targetCompanyId ? `?companyId=${targetCompanyId}` : "";
+
       // 1. Fetch live employees
-      const empRes = await fetch("/api/employees");
+      const empRes = await fetch(`/api/employees${companyQueryParam}`);
       if (empRes.ok) {
         const empJson = await empRes.json();
-        if (empJson.success && Array.isArray(empJson.data) && empJson.data.length > 0) {
+        if (empJson.success && Array.isArray(empJson.data)) {
           const liveMapped: Employee[] = empJson.data.map((item: any) => ({
             id: item.id,
             employeeNumber: item.employeeNumber,
@@ -487,9 +582,9 @@ export default function DigiSailHRMDashboard() {
             lastName: item.lastName,
             email: item.email,
             phone: item.phone || "+1 (555) 000-0000",
-            avatarUrl: item.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-            branch: item.branch?.name || "New York Headquarters",
-            department: item.department?.name || "Engineering",
+            avatarUrl: item.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.firstName + " " + item.lastName)}&background=6366f1&color=fff&bold=true`,
+            branch: item.branch?.name || "Main Branch",
+            department: item.department?.name || "Operations",
             team: item.team?.name || "Core Platform & Cloud Team",
             designation: item.designation?.title || "Staff Member",
             createdByName: item.createdBy?.email ? `User (${item.createdBy.email})` : "HR System",
@@ -499,45 +594,99 @@ export default function DigiSailHRMDashboard() {
             onboardingStatus: item.onboardingStatus || "ACTIVE",
             baseSalary: item.baseSalary ? Number(item.baseSalary) : 85000,
             currency: item.currency || "USD",
-            location: item.branch?.name || "New York Headquarters",
+            location: item.branch?.name || "Main Branch",
             approvalHistory: [],
           }));
 
-          // Merge live database employees with initialEmployees, avoiding duplicate ids
-          setEmployees((prev) => {
-            const existingIds = new Set(liveMapped.map((e) => e.id));
-            const retained = prev.filter((e) => !existingIds.has(e.id));
-            return [...liveMapped, ...retained];
-          });
+          if (isIsolatedTenant) {
+            setEmployees(liveMapped);
+          } else if (liveMapped.length > 0) {
+            // Merge for DigiSail demo
+            setEmployees((prev) => {
+              const existingIds = new Set(liveMapped.map((e) => e.id));
+              const retained = prev.filter((e) => !existingIds.has(e.id));
+              return [...liveMapped, ...retained];
+            });
+          }
         }
       }
 
       // 2. Fetch live branches
-      const branchRes = await fetch("/api/org/branches");
+      const branchRes = await fetch(`/api/org/branches${companyQueryParam}`);
       if (branchRes.ok) {
         const branchJson = await branchRes.json();
-        if (branchJson.success && Array.isArray(branchJson.data) && branchJson.data.length > 0) {
+        if (branchJson.success && Array.isArray(branchJson.data)) {
           const liveBranches: BranchRecord[] = branchJson.data.map((b: any) => ({
             id: b.id,
             companyId: b.companyId,
-            companyName: "DigiSail Global Inc.",
+            companyName: b.company?.name || (effectiveRole !== "SUPER_ADMIN" ? authenticatedUser?.company?.name : "Company Branch") || "Company Branch",
             name: b.name,
             code: b.code,
-            city: b.city || "New York",
-            country: b.country || "United States",
+            city: b.city || "Headquarters",
+            country: b.country || "",
             adminName: b.branchAdmin?.employee ? `${b.branchAdmin.employee.firstName} ${b.branchAdmin.employee.lastName}` : (b.branchAdmin?.email || "Branch Admin"),
             departmentCount: b._count?.departments || 0,
             employeeCount: b._count?.employees || 0,
           }));
-          setBranches((prev) => {
-            const ids = new Set(liveBranches.map((b) => b.id));
-            return [...liveBranches, ...prev.filter((b) => !ids.has(b.id))];
-          });
+
+          if (isIsolatedTenant) {
+            setBranches(liveBranches);
+          } else if (liveBranches.length > 0) {
+            setBranches((prev) => {
+              const ids = new Set(liveBranches.map((b) => b.id));
+              return [...liveBranches, ...prev.filter((b) => !ids.has(b.id))];
+            });
+          }
+        }
+      }
+
+      // 2b. Fetch live departments
+      const deptRes = await fetch(`/api/org/departments${companyQueryParam}`);
+      if (deptRes.ok) {
+        const deptJson = await deptRes.json();
+        if (deptJson.success && Array.isArray(deptJson.data)) {
+          const liveDepts: DepartmentRecord[] = deptJson.data.map((d: any) => ({
+            id: d.id,
+            branchId: d.branchId,
+            branchName: d.branch?.name || "Main Branch",
+            name: d.name,
+            code: d.code,
+            adminName: d.deptAdmin?.employee ? `${d.deptAdmin.employee.firstName} ${d.deptAdmin.employee.lastName}` : (d.deptAdmin?.email || "Dept Admin"),
+            teamCount: d._count?.teams || 0,
+            employeeCount: d._count?.employees || 0,
+          }));
+          if (isIsolatedTenant) {
+            setDepartments(liveDepts);
+          } else if (liveDepts.length > 0) {
+            setDepartments(liveDepts);
+          }
+        }
+      }
+
+      // 2c. Fetch live teams
+      const teamRes = await fetch(`/api/org/teams${companyQueryParam}`);
+      if (teamRes.ok) {
+        const teamJson = await teamRes.json();
+        if (teamJson.success && Array.isArray(teamJson.data)) {
+          const liveTeams: TeamRecord[] = teamJson.data.map((t: any) => ({
+            id: t.id,
+            departmentId: t.departmentId,
+            departmentName: t.department?.name || "Department",
+            name: t.name,
+            code: t.code,
+            leadName: t.teamLead?.employee ? `${t.teamLead.employee.firstName} ${t.teamLead.employee.lastName}` : (t.teamLead?.email || "Team Lead"),
+            employeeCount: t._count?.employees || 0,
+          }));
+          if (isIsolatedTenant) {
+            setTeams(liveTeams);
+          } else if (liveTeams.length > 0) {
+            setTeams(liveTeams);
+          }
         }
       }
 
       // 3. Fetch live leave requests
-      const leaveRes = await fetch("/api/leaves");
+      const leaveRes = await fetch(`/api/leaves${companyQueryParam}`);
       if (leaveRes.ok) {
         const leaveJson = await leaveRes.json();
         if (leaveJson.success && Array.isArray(leaveJson.data)) {
@@ -545,7 +694,7 @@ export default function DigiSailHRMDashboard() {
             id: l.id,
             employeeId: l.employeeId,
             employeeName: l.employee ? `${l.employee.firstName} ${l.employee.lastName}` : "Team Member",
-            employeeAvatar: l.employee?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            employeeAvatar: l.employee?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(l.employee?.firstName || "Staff")}&background=6366f1&color=fff`,
             department: l.employee?.department?.name || "Operations",
             leaveType: l.leaveType?.name || "Annual Vacation",
             leaveTypeCode: l.leaveType?.code || "ANNUAL",
@@ -558,10 +707,15 @@ export default function DigiSailHRMDashboard() {
             appliedAt: new Date(l.createdAt).toISOString().split("T")[0],
             approvedBy: l.approvedBy?.employee ? `${l.approvedBy.employee.firstName} ${l.approvedBy.employee.lastName}` : l.approvedBy?.email,
           }));
-          setLeaveRequests((prev) => {
-            const liveIds = new Set(liveLeaves.map((x) => x.id));
-            return [...liveLeaves, ...prev.filter((x) => !liveIds.has(x.id))];
-          });
+
+          if (isIsolatedTenant) {
+            setLeaveRequests(liveLeaves);
+          } else {
+            setLeaveRequests((prev) => {
+              const liveIds = new Set(liveLeaves.map((x) => x.id));
+              return [...liveLeaves, ...prev.filter((x) => !liveIds.has(x.id))];
+            });
+          }
         }
       }
 
@@ -589,7 +743,29 @@ export default function DigiSailHRMDashboard() {
         const payrollJson = await payrollRes.json();
         if (payrollJson.success && payrollJson.data) {
           setPayrollOverview(payrollJson.data);
+        } else if (isIsolatedTenant) {
+          setPayrollOverview({
+            kpis: {
+              totalDisbursed: 0,
+              totalTaxCollected: 0,
+              totalBatches: 0,
+              activeEmployeeCount: 1,
+              latestRun: null,
+            },
+            runs: [],
+          });
         }
+      } else if (isIsolatedTenant) {
+        setPayrollOverview({
+          kpis: {
+            totalDisbursed: 0,
+            totalTaxCollected: 0,
+            totalBatches: 0,
+            activeEmployeeCount: 1,
+            latestRun: null,
+          },
+          runs: [],
+        });
       }
 
       // 7. Fetch live employee payslips (Phase 7)
@@ -605,8 +781,12 @@ export default function DigiSailHRMDashboard() {
       const projRes = await fetch("/api/projects");
       if (projRes.ok) {
         const projJson = await projRes.json();
-        if (projJson.success && Array.isArray(projJson.data) && projJson.data.length > 0) {
-          setProjectsList(projJson.data);
+        if (projJson.success && Array.isArray(projJson.data)) {
+          if (isIsolatedTenant) {
+            setProjectsList(projJson.data);
+          } else if (projJson.data.length > 0) {
+            setProjectsList(projJson.data);
+          }
         }
       }
 
@@ -615,7 +795,11 @@ export default function DigiSailHRMDashboard() {
       if (tsRes.ok) {
         const tsJson = await tsRes.json();
         if (tsJson.success && Array.isArray(tsJson.data)) {
-          setTimesheetsList(tsJson.data);
+          if (isIsolatedTenant) {
+            setTimesheetsList(tsJson.data);
+          } else if (tsJson.data.length > 0) {
+            setTimesheetsList(tsJson.data);
+          }
         }
       }
 
@@ -631,7 +815,7 @@ export default function DigiSailHRMDashboard() {
       }
 
       // 11. Fetch live subscription & quotas for active tenant (Phase 9)
-      const subRes = await fetch(`/api/tenants/${selectedCompanyId}/subscription`);
+      const subRes = await fetch(`/api/tenants/${targetCompanyId}/subscription`);
       if (subRes.ok) {
         const subJson = await subRes.json();
         if (subJson.success && subJson.data) {
@@ -1795,6 +1979,7 @@ export default function DigiSailHRMDashboard() {
                             setSelectedCompanyId(comp.id);
                             setShowCompanyDropdown(false);
                             showToast(`Switched company view to "${comp.name}"`);
+                            fetchLiveData(comp.id);
                           }}
                           className={`w-full text-left p-2 rounded-xl transition-all flex items-center justify-between text-xs cursor-pointer ${
                             selectedCompanyId === comp.id
@@ -2199,6 +2384,7 @@ export default function DigiSailHRMDashboard() {
                                     setCurrentRole("COMPANY_ADMIN");
                                     setActiveTab("dashboard");
                                     showToast(`Now managing ${comp.name} as Company HR Admin.`);
+                                    fetchLiveData(comp.id);
                                   }}
                                   className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 cursor-pointer"
                                 >
@@ -2421,10 +2607,18 @@ export default function DigiSailHRMDashboard() {
                   <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 shadow-sm flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                        September Payroll
+                        Current Payroll
                       </p>
-                      <p className="text-2xl font-bold text-white mt-1">$55,833</p>
-                      <p className="text-[11px] text-emerald-400 mt-1">Settled on Neon Cloud</p>
+                      <p className="text-2xl font-bold text-white mt-1">
+                        {payrollOverview?.kpis?.totalDisbursed && payrollOverview.kpis.totalDisbursed > 0
+                          ? `$${payrollOverview.kpis.totalDisbursed.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                          : "$0"}
+                      </p>
+                      <p className="text-[11px] text-emerald-400 mt-1">
+                        {payrollOverview?.kpis?.totalDisbursed && payrollOverview.kpis.totalDisbursed > 0
+                          ? "Settled on Neon Cloud"
+                          : "No payroll runs yet"}
+                      </p>
                     </div>
                     <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                       <DollarSign className="w-6 h-6 text-emerald-400" />
@@ -3104,6 +3298,7 @@ export default function DigiSailHRMDashboard() {
                         onClick={() => {
                           setSelectedCompanyId(c.id);
                           showToast(`Focused on company: ${c.name}`);
+                          fetchLiveData(c.id);
                         }}
                         className={`cursor-pointer p-4 rounded-2xl border transition-all ${
                           isSelected
@@ -4500,11 +4695,13 @@ export default function DigiSailHRMDashboard() {
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 text-slate-300">
                         {(() => {
-                          // Display live payslips if available, or fallback to mock
+                          // Display live payslips if available, or fallback to mock for DigiSail demo
+                          const isDigiSailDemo = sessionUserRole === "SUPER_ADMIN" && selectedCompanyId === "digisail-company-1";
                           const activeSlips: PayslipDetailRecord[] =
                             payslips.length > 0
                               ? payslips
-                              : initialPayroll.map((p) => ({
+                              : isDigiSailDemo
+                              ? initialPayroll.map((p) => ({
                                   id: p.id,
                                   payrollRunId: "run-mock",
                                   month: 9,
@@ -4540,7 +4737,8 @@ export default function DigiSailHRMDashboard() {
                                     netSalary: p.netSalary,
                                   },
                                   createdAt: "2026-09-30T10:00:00Z",
-                                }));
+                                }))
+                              : [];
 
                           const filtered = activeSlips.filter((p) => {
                             if (currentRole === "EMPLOYEE") {
